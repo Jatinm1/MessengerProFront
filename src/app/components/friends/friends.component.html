@@ -1,0 +1,205 @@
+<div class="friends-container">
+  <div class="tabs-header">
+    <button 
+      class="tab-btn" 
+      [class.active]="activeTab === 'friends'"
+      (click)="setActiveTab('friends')">
+      Friends ({{ friendsCount }})
+    </button>
+    <button 
+      class="tab-btn" 
+      [class.active]="activeTab === 'requests'"
+      (click)="setActiveTab('requests')">
+      Requests 
+      <span class="badge" *ngIf="pendingReceivedRequestsCount > 0">
+        {{ pendingReceivedRequestsCount }}
+      </span>
+    </button>
+    <button 
+      class="tab-btn" 
+      [class.active]="activeTab === 'search'"
+      (click)="setActiveTab('search')">
+      Search Users
+    </button>
+  </div>
+
+  <div class="messages">
+    <div class="success-message" *ngIf="successMessage">{{ successMessage }}</div>
+    <div class="error-message" *ngIf="errorMessage">{{ errorMessage }}</div>
+  </div>
+
+  <!-- Search Tab -->
+  <div class="tab-content" *ngIf="activeTab === 'search'">
+    <div class="search-section">
+      <div class="search-box">
+        <input 
+          type="text" 
+          [(ngModel)]="searchTerm" 
+          (input)="onSearchInput()"
+          (keyup.enter)="searchUsers()"
+          placeholder="Search by username or display name..."
+          class="search-input" />
+        <button (click)="searchUsers()" class="search-btn" [disabled]="isSearching">
+          {{ isSearching ? 'Searching...' : 'Search' }}
+        </button>
+      </div>
+
+      <div class="search-loading" *ngIf="isSearching && searchTerm.trim()">
+        <div class="loading-spinner"></div>
+        <span>Searching for "{{ searchTerm }}"...</span>
+      </div>
+
+      <div class="search-results" *ngIf="searchResults.length > 0">
+        <div class="result-item" *ngFor="let user of searchResults">
+          <div class="user-info" (click)="viewProfile(user.userId)" style="cursor: pointer;">
+            <div class="user-avatar">
+              <img *ngIf="user.profilePhotoUrl" [src]="user.profilePhotoUrl" alt="{{ user.displayName }}">
+              <span *ngIf="!user.profilePhotoUrl">{{ user.displayName.charAt(0).toUpperCase() }}</span>
+              <span class="online-dot" *ngIf="user.isOnline"></span>
+            </div>
+            <div class="user-details">
+              <div class="user-name">{{ user.displayName }}</div>
+              <div class="preview">
+                {{ '@' + user.userName }}
+                <span *ngIf="user.isOnline" class="online-text"> • Online</span>
+                <span *ngIf="!user.isOnline && user.lastSeenUtc" class="offline-text"> • {{ formatLastSeen(user.lastSeenUtc) }}</span>
+              </div>
+              <div class="user-bio" *ngIf="user.bio">{{ user.bio }}</div>
+            </div>
+          </div>
+          <button 
+            class="action-btn"
+            [class.btn-send]="canSendRequest(user.relationshipStatus)"
+            [class.btn-disabled]="!canSendRequest(user.relationshipStatus)"
+            (click)="sendFriendRequest(user.userId)"
+            [disabled]="!canSendRequest(user.relationshipStatus)">
+            {{ getRelationshipButtonText(user.relationshipStatus) }}
+          </button>
+        </div>
+      </div>
+
+      <div class="empty-state" *ngIf="searchTerm && searchResults.length === 0 && !isSearching">
+        <div class="empty-icon">🔍</div>
+        <div class="empty-title">No users found</div>
+        <div class="empty-text">Try searching with a different name or username</div>
+      </div>
+
+      <div class="empty-state" *ngIf="!searchTerm && !isSearching">
+        <div class="empty-icon">👥</div>
+        <div class="empty-title">Search for users</div>
+        <div class="empty-text">Type a name or username to find people</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Friend Requests Tab -->
+  <div class="tab-content" *ngIf="activeTab === 'requests'">
+    <div class="sub-tabs">
+      <button 
+        class="sub-tab-btn" 
+        [class.active]="requestsSubTab === 'received'"
+        (click)="setRequestsSubTab('received')">
+        Pending Received Requests ({{ pendingReceivedRequestsCount }})
+      </button>
+      <button 
+        class="sub-tab-btn" 
+        [class.active]="requestsSubTab === 'sent'"
+        (click)="setRequestsSubTab('sent')">
+        Pending Sent Requests ({{ sentRequestsCount }})
+      </button>
+    </div>
+
+    <!-- Received Requests -->
+    <div class="requests-list" *ngIf="requestsSubTab === 'received'">
+      <div class="request-item" *ngFor="let request of receivedRequests">
+        <div class="user-info" (click)="viewProfile(request.senderId)" style="cursor: pointer;">
+          <div class="user-avatar">{{ request.senderDisplayName.charAt(0).toUpperCase() }}</div>
+          <div class="user-details">
+            <div class="user-name">{{ request.senderDisplayName }}</div>
+            <div class="user-username">{{ '@' + request.senderUserName }}</div>
+            <div class="request-date">{{ formatDate(request.createdAtUtc) }}</div>
+          </div>
+        </div>
+        <div class="request-actions">
+          <span class="status-badge" [ngClass]="getStatusClass(request.status)">
+            {{ request.status }}
+          </span>
+          <div class="action-buttons" *ngIf="request.status === 'Pending'">
+            <button class="btn-accept" (click)="acceptRequest(request.requestId)">Accept</button>
+            <button class="btn-reject" (click)="rejectRequest(request.requestId)">Reject</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="empty-state" *ngIf="receivedRequestsCount === 0">
+        <div class="empty-icon">📭</div>
+        <div class="empty-title">No friend requests</div>
+        <div class="empty-text">You haven't received any friend requests yet</div>
+      </div>
+    </div>
+
+    <!-- Sent Requests -->
+    <div class="requests-list" *ngIf="requestsSubTab === 'sent'">
+      <div class="request-item" *ngFor="let request of sentRequests">
+        <div class="user-info" (click)="viewProfile(request.receiverId)" style="cursor: pointer;">
+          <div class="user-avatar">{{ request.receiverDisplayName.charAt(0).toUpperCase() }}</div>
+          <div class="user-details">
+            <div class="user-name">{{ request.receiverDisplayName }}</div>
+            <div class="user-username">{{ '@' + request.receiverUserName }}</div>            
+            <div class="request-date">{{ formatDate(request.createdAtUtc) }}</div>
+          </div>
+        </div>
+        <div class="request-status">
+          <span class="status-badge" [ngClass]="getStatusClass(request.status)">
+            {{ request.status }}
+          </span>
+          <div class="status-message" *ngIf="request.status === 'Accepted'">
+            Accepted on {{ formatDate(request.updatedAtUtc!) }}
+          </div>
+          <div class="status-message" *ngIf="request.status === 'Rejected'">
+            Rejected on {{ formatDate(request.updatedAtUtc!) }}
+          </div>
+        </div>
+      </div>
+
+      <div class="empty-state" *ngIf="sentRequestsCount === 0">
+        <div class="empty-icon">📤</div>
+        <div class="empty-title">No sent requests</div>
+        <div class="empty-text">You haven't sent any friend requests yet</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Friends List Tab -->
+  <div class="tab-content" *ngIf="activeTab === 'friends'">
+    <div class="friends-list">
+      <div class="friend-item" *ngFor="let friend of friends">
+        <div class="user-info" (click)="viewProfile(friend.friendUserId)" style="cursor: pointer;">
+          <div class="user-avatar">
+            {{ friend.friendDisplayName.charAt(0).toUpperCase() }}
+            <span class="online-dot" *ngIf="friend.isOnline"></span>
+          </div>
+          <div class="user-details">
+            <div class="user-name">{{ friend.friendDisplayName }}</div>
+            <div class="user-username">
+              {{ '@' + friend.friendUserName }}
+              <span *ngIf="friend.isOnline" class="online-text"> • Online</span>
+              <span *ngIf="!friend.isOnline && friend.lastSeenUtc" class="offline-text"> • {{ formatLastSeen(friend.lastSeenUtc) }}</span>
+            </div>
+            <div class="friend-since">Friends since {{ formatDate(friend.friendsSince) }}</div>
+          </div>
+        </div>
+        <div class="friend-status">
+          <span class="online-indicator" *ngIf="friend.isOnline"></span>
+        </div>
+      </div>
+
+      <div class="empty-state" *ngIf="friendsCount === 0">
+        <div class="empty-icon">👥</div>
+        <div class="empty-title">No friends yet</div>
+        <div class="empty-text">Search for users and send friend requests to get started</div>
+        <button class="btn-primary" (click)="setActiveTab('search')">Search Users</button>
+      </div>
+    </div>
+  </div>
+</div>

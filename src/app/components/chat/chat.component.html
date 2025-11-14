@@ -1,0 +1,347 @@
+<div class="app">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <div class="header-content">
+        <span>Logged in as: {{ currentUser?.displayName }}</span>
+        <button class="create-group-btn" (click)="openCreateGroupModal()" title="Create Group">
+          ➕ Group
+        </button>
+      </div>
+    </div>
+    
+    <div class="contacts">
+      <div 
+        *ngFor="let contact of contacts"
+        class="contact"
+        [class.active]="isContactActive(contact)"
+        (click)="openChat(contact)">
+        <div class="contact-avatar">
+          <img *ngIf="contact.photoUrl" [src]="contact.photoUrl" alt="avatar" class="avatar-img">
+          <span *ngIf="!contact.photoUrl">{{ contact.displayName.charAt(0).toUpperCase() }}</span>
+          <span class="online-dot" *ngIf="!contact.isGroup && contact.isOnline"></span>
+        </div>
+        <div class="info">
+          <div class="name">
+            <span class="group-icon" *ngIf="contact.isGroup">👥</span>
+            {{ contact.displayName }}
+            <span class="unread-badge" *ngIf="contact.unreadCount && contact.unreadCount > 0">
+              {{ contact.unreadCount }}
+            </span>
+          </div>
+          <div class="preview">{{ contact.lastMessage }}</div>
+        </div>
+        <div class="time">{{ formatLastMessageTime(contact.lastMessageTime) }}</div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+    <div class="section-header">Registered Users</div>
+    
+    <div class="contacts">
+      <div 
+        *ngFor="let user of allUsers"
+        class="contact"
+        (click)="startNewChat(user)">
+        <div class="contact-avatar">
+          {{ user.displayName.charAt(0).toUpperCase() }}
+          <span class="online-dot" *ngIf="user.isOnline"></span>
+        </div>
+        <div class="info">
+          <div class="name">{{ user.displayName }}</div>
+          <div class="preview">{{ '@' + user.userName }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chat panel -->
+  <div class="chat">
+    <div class="chat-header" *ngIf="selectedContact">
+      <div class="header-left">
+        <div class="chat-avatar">
+          <img *ngIf="getGroupPhotoUrl()" [src]="getGroupPhotoUrl()" alt="avatar" class="avatar-img">
+          <span *ngIf="!getGroupPhotoUrl()">{{ selectedContact.displayName.charAt(0).toUpperCase() }}</span>
+          <span class="online-dot" *ngIf="!selectedContact.isGroup && selectedContact.isOnline"></span>
+        </div>
+        <div class="header-info">
+          <div class="header-title">
+            <span class="group-icon" *ngIf="selectedContact.isGroup">👥</span>
+            {{ selectedContact.displayName }}
+          </div>
+          <div class="header-status">
+            {{ getContactStatusText(selectedContact) }}
+          </div>
+        </div>
+      </div>
+      <button 
+        *ngIf="selectedContact.isGroup" 
+        class="group-info-btn"
+        (click)="openGroupDetails()">
+        ℹ️ Info
+      </button>
+    </div>
+
+    <div class="chat-header" *ngIf="!selectedContact">
+      Select a contact to start chatting
+    </div>
+
+    <div class="messages-wrapper" *ngIf="showChat">
+      <div class="messages" #messagesContainer (scroll)="onScroll()">
+        <ng-container *ngFor="let msg of messages">
+          <div class="date-divider" *ngIf="msg.showDateDivider">
+            <span>{{ msg.dateLabel }}</span>
+          </div>
+          
+          <div class="unread-divider" *ngIf="isFirstUnreadMessage(msg)">
+            <span>Unread Messages</span>
+          </div>
+          
+          <div 
+            class="msg" 
+            [class.self]="isMessageFromCurrentUser(msg)" 
+            [class.other]="!isMessageFromCurrentUser(msg)"
+            [attr.data-message-id]="msg.messageId">
+            <div class="msg-sender" *ngIf="!isMessageFromCurrentUser(msg) && selectedContact?.isGroup">
+              {{ msg.fromDisplayName || msg.fromUserName }}
+            </div>
+            <div class="msg-body">{{ msg.body }}</div>
+            <div class="meta">
+              {{ formatTime(msg.createdAtUtc) }}
+              <span 
+                *ngIf="isMessageFromCurrentUser(msg)" 
+                class="status-icon"
+                [class]="getMessageStatusClass(msg.messageStatus)">
+                {{ getMessageStatusIcon(msg.messageStatus) }}
+              </span>
+            </div>
+          </div>
+        </ng-container>
+      </div>
+
+      <button 
+        class="new-messages-btn" 
+        *ngIf="showNewMessageButton"
+        (click)="scrollToNewMessages()">
+        ↓ {{ newMessageCount }} new message{{ newMessageCount > 1 ? 's' : '' }}
+      </button>
+    </div>
+
+    <div class="no-chat" *ngIf="!showChat">
+      Select a contact to start chatting
+    </div>
+
+    <div class="send-area" *ngIf="showChat">
+      <input 
+        [(ngModel)]="messageText" 
+        placeholder="Type a message..."
+        (keyup.enter)="sendMessage()" />
+      <button (click)="sendMessage()">Send</button>
+    </div>
+  </div>
+</div>
+
+<!-- Create Group Modal -->
+<div class="modal-overlay" *ngIf="showCreateGroupModal" (click)="closeCreateGroupModal()">
+  <div class="modal-content" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h2>Create New Group</h2>
+      <button class="close-btn" (click)="closeCreateGroupModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Group Name</label>
+        <input 
+          type="text" 
+          [(ngModel)]="groupName" 
+          placeholder="Enter group name"
+          class="form-input" />
+      </div>
+      <div class="form-group">
+        <label>Select Members ({{ selectedFriendsForGroup.length }} selected)</label>
+        <div class="members-list">
+          <div 
+            *ngFor="let friend of friendsList"
+            class="member-item"
+            [class.selected]="isFriendSelected(friend.userId)"
+            (click)="toggleFriendSelection(friend.userId)">
+            <div class="member-avatar">
+              {{ friend.displayName.charAt(0).toUpperCase() }}
+            </div>
+            <div class="member-info">
+              <div class="member-name">{{ friend.displayName }}</div>
+              <div class="member-username">{{ '@' + friend.userName }}</div>
+            </div>
+            <div class="member-check" *ngIf="isFriendSelected(friend.userId)">✓</div>
+          </div>
+          <div class="empty-state" *ngIf="friendsList.length === 0">
+            <p>No friends available. Add friends first to create a group.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" (click)="closeCreateGroupModal()">Cancel</button>
+      <button class="btn-create" (click)="createGroup()">Create Group</button>
+    </div>
+  </div>
+</div>
+
+<!-- Group Details Modal -->
+<div class="modal-overlay" *ngIf="showGroupDetailsModal" (click)="closeGroupDetailsModal()">
+  <div class="modal-content" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h2>Group Details</h2>
+      <button class="close-btn" (click)="closeGroupDetailsModal()">×</button>
+    </div>
+    <div class="modal-body" *ngIf="currentGroupDetails">
+      <div class="group-info">
+        <div class="group-avatar-large">
+          <img *ngIf="currentGroupDetails.groupPhotoUrl" [src]="currentGroupDetails.groupPhotoUrl" alt="group" class="avatar-img">
+          <span *ngIf="!currentGroupDetails.groupPhotoUrl">{{ currentGroupDetails.groupName.charAt(0).toUpperCase() }}</span>
+        </div>
+        <h3>{{ currentGroupDetails.groupName }}</h3>
+        <p class="group-created">Created by {{ currentGroupDetails.creatorDisplayName }} on {{ formatLastMessageTime(currentGroupDetails.createdAtUtc) }}</p>
+        
+        <!-- Admin Controls -->
+        <div class="group-actions" *ngIf="isCurrentUserAdmin()">
+          <button class="btn-action" (click)="openEditGroupModal()">
+            ✏️ Edit Group
+          </button>
+          <button class="btn-action" (click)="openAddMemberModal()">
+            ➕ Add Member
+          </button>
+        </div>
+      </div>
+      
+      <div class="group-members">
+        <h4>Members ({{ currentGroupDetails.members.length }})</h4>
+        <div class="members-list">
+          <div class="member-item" *ngFor="let member of currentGroupDetails.members">
+            <div class="member-avatar">
+              <img *ngIf="member.profilePhotoUrl" [src]="member.profilePhotoUrl" alt="avatar" class="avatar-img">
+              <span *ngIf="!member.profilePhotoUrl">{{ member.displayName.charAt(0).toUpperCase() }}</span>
+            </div>
+            <div class="member-info">
+              <div class="member-name">
+                {{ member.displayName }}
+                <span class="admin-badge" *ngIf="member.isAdmin">Admin</span>
+              </div>
+              <div class="member-username">{{ '@' + member.userName }}</div>
+            </div>
+            <button 
+              *ngIf="canRemoveMember(member)"
+              class="btn-remove-member"
+              (click)="removeMember(member.userId, member.displayName)">
+              🗑️
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" (click)="closeGroupDetailsModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Group Modal -->
+<div class="modal-overlay" *ngIf="showEditGroupModal" (click)="closeEditGroupModal()">
+  <div class="modal-content" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h2>Edit Group</h2>
+      <button class="close-btn" (click)="closeEditGroupModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <!-- Group Photo Upload -->
+      <div class="form-group">
+        <label>Group Photo</label>
+        <div class="photo-upload-container">
+          <div class="photo-preview">
+            <div class="photo-preview-box">
+              <img *ngIf="groupPhotoPreview" [src]="groupPhotoPreview" alt="preview" class="preview-image">
+              <div *ngIf="!groupPhotoPreview" class="preview-placeholder">
+                <span>📷</span>
+                <p>No photo selected</p>
+              </div>
+            </div>
+          </div>
+          <div class="photo-actions">
+            <input 
+              type="file" 
+              #groupPhotoInput
+              accept="image/*"
+              (change)="onGroupPhotoSelected($event)"
+              style="display: none" />
+            <button class="btn-upload" (click)="triggerGroupPhotoUpload()">
+              📁 Choose Photo
+            </button>
+            <button 
+              *ngIf="groupPhotoPreview"
+              class="btn-remove-photo" 
+              (click)="removeGroupPhoto()">
+              🗑️ Remove
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Group Name -->
+      <div class="form-group">
+        <label>Group Name</label>
+        <input 
+          type="text" 
+          [(ngModel)]="editGroupName" 
+          placeholder="Enter group name"
+          class="form-input" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" (click)="closeEditGroupModal()">Cancel</button>
+      <button class="btn-create" (click)="updateGroup()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Member Modal -->
+<div class="modal-overlay" *ngIf="showAddMemberModal" (click)="closeAddMemberModal()">
+  <div class="modal-content" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h2>Add Member</h2>
+      <button class="close-btn" (click)="closeAddMemberModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Select a friend to add</label>
+        <div class="members-list">
+          <div 
+            *ngFor="let friend of availableFriendsToAdd"
+            class="member-item"
+            [class.selected]="selectedFriendToAdd === friend.userId"
+            (click)="selectedFriendToAdd = friend.userId">
+            <div class="member-avatar">
+              {{ friend.displayName.charAt(0).toUpperCase() }}
+            </div>
+            <div class="member-info">
+              <div class="member-name">{{ friend.displayName }}</div>
+              <div class="member-username">{{ '@' + friend.userName }}</div>
+            </div>
+            <div class="member-check" *ngIf="selectedFriendToAdd === friend.userId">✓</div>
+          </div>
+          <div class="empty-state" *ngIf="availableFriendsToAdd.length === 0">
+            <p>All your friends are already in this group.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" (click)="closeAddMemberModal()">Cancel</button>
+      <button 
+        class="btn-create" 
+        [disabled]="!selectedFriendToAdd"
+        (click)="addMemberToGroup()">
+        Add Member
+      </button>
+    </div>
+  </div>
+</div>
