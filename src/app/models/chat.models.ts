@@ -23,14 +23,21 @@ export interface Contact {
 }
 
 export interface Message {
-  messageId: number | string;
+  messageId: number;
   conversationId: string;
   fromUserId: string;
   fromUserName: string;
   fromDisplayName?: string;
   body: string;
+  contentType?: string; // 'text', 'image', 'video'
+  mediaUrl?: string;
   createdAtUtc: string;
   messageStatus?: 'Sent' | 'Delivered' | 'Read';
+}
+
+export interface MessageWithDate extends Message {
+  dateLabel?: string;
+  showDateDivider?: boolean;
 }
 
 export interface LoginResponse {

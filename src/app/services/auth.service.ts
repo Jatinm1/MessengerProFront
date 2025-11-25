@@ -3,12 +3,13 @@ import { HttpClient } from '@angular/common/http';
 import { BehaviorSubject, Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { LoginResponse, User } from '../models/chat.models';
+import { environment } from '../../env/env';
 
 @Injectable({
   providedIn: 'root'
 })
 export class AuthService {
-  private apiBase = 'https://localhost:7006/api';
+  private apiBase : string = environment.apiUrl;
   private currentUserSubject = new BehaviorSubject<User | null>(null);
   private tokenSubject = new BehaviorSubject<string | null>(null);
 
@@ -36,6 +37,11 @@ export class AuthService {
   getCurrentUser(): User | null {
     return this.currentUserSubject.value;
   }
+
+  setCurrentUser(user: User): void {
+  this.currentUserSubject.next(user);
+}
+
 
 logout(): Observable<any> {
   return this.http.post(`${this.apiBase}/auth/logout`, {})

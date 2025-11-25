@@ -9,9 +9,9 @@
         </button>
       </div>
     </div>
-    
+
     <div class="contacts">
-      <div 
+      <div
         *ngFor="let contact of contacts"
         class="contact"
         [class.active]="isContactActive(contact)"
@@ -36,23 +36,6 @@
     </div>
 
     <div class="divider"></div>
-    <div class="section-header">Registered Users</div>
-    
-    <div class="contacts">
-      <div 
-        *ngFor="let user of allUsers"
-        class="contact"
-        (click)="startNewChat(user)">
-        <div class="contact-avatar">
-          {{ user.displayName.charAt(0).toUpperCase() }}
-          <span class="online-dot" *ngIf="user.isOnline"></span>
-        </div>
-        <div class="info">
-          <div class="name">{{ user.displayName }}</div>
-          <div class="preview">{{ '@' + user.userName }}</div>
-        </div>
-      </div>
-    </div>
   </div>
 
   <!-- Chat panel -->
@@ -74,8 +57,8 @@
           </div>
         </div>
       </div>
-      <button 
-        *ngIf="selectedContact.isGroup" 
+      <button
+        *ngIf="selectedContact.isGroup"
         class="group-info-btn"
         (click)="openGroupDetails()">
         ℹ️ Info
@@ -92,24 +75,54 @@
           <div class="date-divider" *ngIf="msg.showDateDivider">
             <span>{{ msg.dateLabel }}</span>
           </div>
-          
+
           <div class="unread-divider" *ngIf="isFirstUnreadMessage(msg)">
             <span>Unread Messages</span>
           </div>
-          
-          <div 
-            class="msg" 
-            [class.self]="isMessageFromCurrentUser(msg)" 
+
+          <div
+            class="msg"
+            [class.self]="isMessageFromCurrentUser(msg)"
             [class.other]="!isMessageFromCurrentUser(msg)"
+            [class.media-msg]="isMediaMessage(msg)"
             [attr.data-message-id]="msg.messageId">
             <div class="msg-sender" *ngIf="!isMessageFromCurrentUser(msg) && selectedContact?.isGroup">
               {{ msg.fromDisplayName || msg.fromUserName }}
             </div>
-            <div class="msg-body">{{ msg.body }}</div>
+
+            <!-- Media Content -->
+            <div class="msg-media" *ngIf="isMediaMessage(msg)">
+              <!-- Image -->
+              <div class="media-content" *ngIf="msg.contentType === 'image'"
+                   (click)="openMediaViewer(msg.mediaUrl!, 'image')">
+                <img [src]="msg.mediaUrl" alt="Image" class="media-image">
+                <div class="media-overlay">
+                  <span class="view-icon">🔍</span>
+                </div>
+              </div>
+
+              <!-- Video -->
+              <div class="media-content" *ngIf="msg.contentType === 'video'"
+                   (click)="openMediaViewer(msg.mediaUrl!, 'video')">
+                <img [src]="getVideoThumbnail(msg.mediaUrl!)" alt="Video" class="media-image">
+                <div class="media-overlay">
+                  <span class="play-icon">▶️</span>
+                </div>
+              </div>
+
+              <!-- Caption -->
+              <div class="msg-caption" *ngIf="msg.body && msg.body !== msg.mediaUrl">
+                {{ msg.body }}
+              </div>
+            </div>
+
+            <!-- Text Content -->
+            <div class="msg-body" *ngIf="!isMediaMessage(msg)">{{ msg.body }}</div>
+
             <div class="meta">
               {{ formatTime(msg.createdAtUtc) }}
-              <span 
-                *ngIf="isMessageFromCurrentUser(msg)" 
+              <span
+                *ngIf="isMessageFromCurrentUser(msg)"
                 class="status-icon"
                 [class]="getMessageStatusClass(msg.messageStatus)">
                 {{ getMessageStatusIcon(msg.messageStatus) }}
@@ -119,8 +132,8 @@
         </ng-container>
       </div>
 
-      <button 
-        class="new-messages-btn" 
+      <button
+        class="new-messages-btn"
         *ngIf="showNewMessageButton"
         (click)="scrollToNewMessages()">
         ↓ {{ newMessageCount }} new message{{ newMessageCount > 1 ? 's' : '' }}
@@ -131,13 +144,92 @@
       Select a contact to start chatting
     </div>
 
+    <!-- Send Area with Media & Emoji Support -->
     <div class="send-area" *ngIf="showChat">
-      <input 
-        [(ngModel)]="messageText" 
+      <!-- Hidden file input -->
+      <input
+        type="file"
+        #mediaInput
+        accept="image/*,video/*"
+        (change)="onMediaSelected($event)"
+        style="display: none" />
+
+      <!-- Emoji Picker Container -->
+      <div class="emoji-picker-container" *ngIf="showEmojiPicker">
+        <emoji-mart
+          (emojiClick)="addEmoji($event)"
+          [showPreview]="false"
+          [isNative]="true"
+          [perLine]="8"
+          [emojiSize]="24"
+          [darkMode]="false"
+          title="Pick your emoji">
+        </emoji-mart>
+      </div>
+
+      <!-- Message Input (first) -->
+      <input
+        #messageInput
+        [(ngModel)]="messageText"
         placeholder="Type a message..."
         (keyup.enter)="sendMessage()" />
+
+      <!-- Media Button -->
+      <button class="media-btn" (click)="triggerMediaUpload()" type="button" title="Send photo/video">
+        📎
+      </button>
+
+      <!-- Emoji Button -->
+      <button class="emoji-btn" (click)="toggleEmojiPicker()" type="button" title="Add emoji">
+        😊
+      </button>
+
+      <!-- Send Button -->
       <button (click)="sendMessage()">Send</button>
     </div>
+  </div>
+</div>
+
+<!-- Media Upload Modal -->
+<div class="modal-overlay" *ngIf="showMediaModal" (click)="cancelMediaUpload()">
+  <div class="modal-content media-modal" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h2>Send Media</h2>
+      <button class="close-btn" (click)="cancelMediaUpload()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="media-preview-large">
+        <img *ngIf="isImage()" [src]="mediaPreview" alt="Preview">
+<video *ngIf="isVideo()" [src]="mediaPreview" controls></video>
+      </div>
+      <div class="form-group">
+        <label>Caption (optional)</label>
+        <input
+          type="text"
+          [(ngModel)]="mediaCaption"
+          placeholder="Add a caption..."
+          class="form-input"
+          [disabled]="isUploadingMedia" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" (click)="cancelMediaUpload()" [disabled]="isUploadingMedia">
+        Cancel
+      </button>
+      <button class="btn-create" (click)="sendMediaMessage()" [disabled]="isUploadingMedia">
+        <span *ngIf="!isUploadingMedia">Send</span>
+        <span *ngIf="isUploadingMedia">Sending...</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Media Viewer Modal -->
+<div class="modal-overlay" *ngIf="showMediaViewer" (click)="closeMediaViewer()">
+  <div class="media-viewer-content" (click)="$event.stopPropagation()">
+    <button class="media-viewer-close" (click)="closeMediaViewer()">×</button>
+    <img *ngIf="viewerMediaType === 'image'" [src]="viewerMediaUrl" alt="Full size image" class="media-viewer-image">
+    <video *ngIf="viewerMediaType === 'video'" [src]="viewerMediaUrl" controls class="media-viewer-video"></video>
   </div>
 </div>
 
@@ -151,16 +243,16 @@
     <div class="modal-body">
       <div class="form-group">
         <label>Group Name</label>
-        <input 
-          type="text" 
-          [(ngModel)]="groupName" 
+        <input
+          type="text"
+          [(ngModel)]="groupName"
           placeholder="Enter group name"
           class="form-input" />
       </div>
       <div class="form-group">
         <label>Select Members ({{ selectedFriendsForGroup.length }} selected)</label>
         <div class="members-list">
-          <div 
+          <div
             *ngFor="let friend of friendsList"
             class="member-item"
             [class.selected]="isFriendSelected(friend.userId)"
@@ -202,7 +294,7 @@
         </div>
         <h3>{{ currentGroupDetails.groupName }}</h3>
         <p class="group-created">Created by {{ currentGroupDetails.creatorDisplayName }} on {{ formatLastMessageTime(currentGroupDetails.createdAtUtc) }}</p>
-        
+
         <!-- Admin Controls -->
         <div class="group-actions" *ngIf="isCurrentUserAdmin()">
           <button class="btn-action" (click)="openEditGroupModal()">
@@ -213,7 +305,7 @@
           </button>
         </div>
       </div>
-      
+
       <div class="group-members">
         <h4>Members ({{ currentGroupDetails.members.length }})</h4>
         <div class="members-list">
@@ -229,7 +321,7 @@
               </div>
               <div class="member-username">{{ '@' + member.userName }}</div>
             </div>
-            <button 
+            <button
               *ngIf="canRemoveMember(member)"
               class="btn-remove-member"
               (click)="removeMember(member.userId, member.displayName)">
@@ -267,8 +359,8 @@
             </div>
           </div>
           <div class="photo-actions">
-            <input 
-              type="file" 
+            <input
+              type="file"
               #groupPhotoInput
               accept="image/*"
               (change)="onGroupPhotoSelected($event)"
@@ -276,9 +368,9 @@
             <button class="btn-upload" (click)="triggerGroupPhotoUpload()">
               📁 Choose Photo
             </button>
-            <button 
+            <button
               *ngIf="groupPhotoPreview"
-              class="btn-remove-photo" 
+              class="btn-remove-photo"
               (click)="removeGroupPhoto()">
               🗑️ Remove
             </button>
@@ -289,9 +381,9 @@
       <!-- Group Name -->
       <div class="form-group">
         <label>Group Name</label>
-        <input 
-          type="text" 
-          [(ngModel)]="editGroupName" 
+        <input
+          type="text"
+          [(ngModel)]="editGroupName"
           placeholder="Enter group name"
           class="form-input" />
       </div>
@@ -314,7 +406,7 @@
       <div class="form-group">
         <label>Select a friend to add</label>
         <div class="members-list">
-          <div 
+          <div
             *ngFor="let friend of availableFriendsToAdd"
             class="member-item"
             [class.selected]="selectedFriendToAdd === friend.userId"
@@ -336,8 +428,8 @@
     </div>
     <div class="modal-footer">
       <button class="btn-cancel" (click)="closeAddMemberModal()">Cancel</button>
-      <button 
-        class="btn-create" 
+      <button
+        class="btn-create"
         [disabled]="!selectedFriendToAdd"
         (click)="addMemberToGroup()">
         Add Member

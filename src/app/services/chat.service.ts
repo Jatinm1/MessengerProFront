@@ -8,12 +8,13 @@ import {
   UpdateProfileRequest, MessageStatusDto 
 } from '../models/chat.models';
 import { AuthService } from './auth.service';
+import { environment } from '../../env/env';
 
 @Injectable({
   providedIn: 'root'
 })
 export class ChatService {
-  private apiBase = 'https://localhost:7006/api';
+  private apiBase : string = environment.apiUrl;
   private hubConnection?: signalR.HubConnection;
   
   messageReceived$ = new Subject<Message>();
@@ -25,6 +26,9 @@ export class ChatService {
   friendRequestRejected$ = new Subject<any>();
   friendsListUpdated$ = new Subject<Friend[]>();
   friendRequestError$ = new Subject<string>();
+
+  private groupLeftSubject = new Subject<string>();
+groupLeft$ = this.groupLeftSubject.asObservable();
 
   // Message Status Events
   messageStatusUpdated$ = new Subject<{ messageId: number; status: string }>();
@@ -100,6 +104,11 @@ export class ChatService {
     this.hubConnection.on('conversationMarkedAsRead', (data: { conversationId: string; lastReadMessageId: number }) => {
       this.conversationMarkedAsRead$.next(data);
     });
+
+    this.hubConnection.on("groupLeft", (payload) => {
+  this.groupLeftSubject.next(payload.conversationId);
+});
+
 
     // User Online Status Events
     this.hubConnection.on('userOnlineStatusChanged', (data: { userId: string; isOnline: boolean; lastSeenUtc?: string }) => {
@@ -253,6 +262,23 @@ export class ChatService {
     );
   }
 
+// returns { isAdmin: boolean }
+isUserAdmin(conversationId: string): Observable<{ isAdmin: boolean }> {
+  return this.http.get<{ isAdmin: boolean }>(
+    `${this.apiBase}/chat/group/${conversationId}/is-admin`,
+    { headers: this.getHeaders() }
+  );
+}
+
+transferAdmin(conversationId: string, newAdminId: string): Observable<any> {
+  return this.http.post(
+    `${this.apiBase}/chat/group/${conversationId}/transfer-admin`,
+    { newAdminId },
+    { headers: this.getHeaders() }
+  );
+}
+
+
   // Group Methods
   createGroup(request: CreateGroupRequest): Observable<ConversationResponse> {
     return this.http.post<ConversationResponse>(
@@ -285,10 +311,20 @@ export class ChatService {
     );
   }
 
-  updateGroupInfo(conversationId: string, groupName?: string, groupPhotoUrl?: string): Observable<any> {
-    return this.http.put(
+  leaveGroup(conversationId: string): Observable<any> {
+  return this.http.post(
+    `${this.apiBase}/chat/group/${conversationId}/leave`,
+    {},
+    { headers: this.getHeaders() }
+  );
+}
+
+
+
+updateGroupInfo(conversationId: string, groupName?: string): Observable<void> {
+    return this.http.put<void>(
       `${this.apiBase}/chat/group/${conversationId}`,
-      { groupName, groupPhotoUrl },
+      { groupName},
       { headers: this.getHeaders() }
     );
   }
@@ -307,6 +343,60 @@ export class ChatService {
       { headers: this.getHeaders() }
     );
   }
+
+  
+
+  // Add these methods to your existing ChatService
+
+// Upload profile photo
+uploadProfilePhoto(file: File): Observable<{ url: string; publicId: string }> {
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  return this.http.post<{ url: string; publicId: string }>(
+    `${this.apiBase}/user/profile/photo`,
+    formData,
+    { headers: this.getHeaders().delete('Content-Type') } // Remove Content-Type to let browser set it with boundary
+  );
+}
+
+// Upload group photo
+uploadGroupPhoto(conversationId: string, file: File): Observable<{ url: string; publicId: string }> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+   return this.http.post<{ url: string; publicId: string }>(
+    `${this.apiBase}/chat/group/${conversationId}/photo`,
+    formData,
+    { headers: this.getHeaders().delete('Content-Type') }
+  );
+}
+
+// Upload media (image/video) for chat
+uploadMedia(file: File): Observable<{ url: string; publicId: string; type: string; contentType: string }> {
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  return this.http.post<{ url: string; publicId: string; type: string; contentType: string }>(
+    `${this.apiBase}/chat/upload/media`,
+    formData,
+    { headers: this.getHeaders().delete('Content-Type') }
+  );
+}
+
+// Send media message via SignalR
+async sendDirectMedia(userId: string, mediaUrl: string, mediaType: string, caption?: string): Promise<void> {
+  if (this.hubConnection) {
+    await this.hubConnection.invoke('SendDirectMedia', userId, mediaUrl, mediaType, caption || '');
+  }
+}
+
+// Send group media message via SignalR
+async sendGroupMedia(conversationId: string, mediaUrl: string, mediaType: string, caption?: string): Promise<void> {
+  if (this.hubConnection) {
+    await this.hubConnection.invoke('SendGroupMedia', conversationId, mediaUrl, mediaType, caption || '');
+  }
+}
 
   updateProfile(request: UpdateProfileRequest): Observable<any> {
     return this.http.put(

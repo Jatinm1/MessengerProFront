@@ -21,7 +21,17 @@ import { User } from '../../models/chat.models';
         <div class="nav-header">
           <h2>ChatApp</h2>
           <div class="user-info" (click)="navigateTo('/profile')" style="cursor: pointer;">
-            <div class="user-avatar">{{ getInitials(currentUser.displayName) }}</div>
+            <div class="user-avatar">
+              <img 
+                *ngIf="currentUser.profilePhotoUrl" 
+                [src]="currentUser.profilePhotoUrl" 
+                [alt]="currentUser.displayName"
+                class="avatar-image"
+                (error)="onImageError($event)">
+              <span *ngIf="!currentUser.profilePhotoUrl" class="avatar-initials">
+                {{ getInitials(currentUser.displayName) }}
+              </span>
+            </div>
             <div class="user-details">
               <div class="user-name">{{ currentUser.displayName }}</div>
               <div class="user-status">🟢 Online</div>
@@ -129,6 +139,18 @@ import { User } from '../../models/chat.models';
       color: white;
       box-shadow: 0 3px 10px rgba(37,99,235,0.4);
       flex-shrink: 0;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .avatar-image {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .avatar-initials {
+      z-index: 1;
     }
 
     .user-details {
@@ -299,20 +321,33 @@ export class MainLayoutComponent implements OnInit {
   ) {}
 
   async ngOnInit(): Promise<void> {
-    this.currentUser = this.authService.getCurrentUser();
-    if (!this.currentUser) {
-      this.router.navigate(['/login']);
-      return;
-    }
-    try {
-      await this.chatService.connectToHub();
-    } catch (error) {
-      console.error('Failed to connect to hub:', error);
-    }
+  // 🔥 Listen for live updates
+  this.authService.currentUser$
+    .subscribe(user => {
+      this.currentUser = user;
+
+      // If NOT logged in, redirect
+      if (!user) {
+        this.router.navigate(['/login']);
+      }
+    });
+
+  try {
+    await this.chatService.connectToHub();
+  } catch (error) {
+    console.error('Failed to connect to hub:', error);
   }
+}
+
 
   getInitials(name: string): string {
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
+  }
+
+  onImageError(event: Event): void {
+    const imgElement = event.target as HTMLImageElement;
+    imgElement.style.display = 'none';
+    // The initials will automatically show because the image is hidden
   }
 
   isActive(route: string): boolean {
@@ -335,17 +370,16 @@ export class MainLayoutComponent implements OnInit {
     this.mobileMenuOpen = false;
   }
 
-logout(): void {
-  this.chatService.disconnectFromHub();
+  logout(): void {
+    this.chatService.disconnectFromHub();
 
-  this.authService.logout().subscribe({
-    next: () => {
-      this.router.navigate(['/login']);
-    },
-    error: () => {
-      this.router.navigate(['/login']); // still logout UI even if API fails
-    }
-  });
-}
-
+    this.authService.logout().subscribe({
+      next: () => {
+        this.router.navigate(['/login']);
+      },
+      error: () => {
+        this.router.navigate(['/login']); // still logout UI even if API fails
+      }
+    });
+  }
 }
