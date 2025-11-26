@@ -120,10 +120,27 @@ import { log } from 'console';
           </div>
 
           <div class="group-actions">
-            <button class="action-btn" (click)="openAddMemberModal.emit()">➕ Add Member</button>
-            <button class="action-btn" (click)="openEditGroupModal.emit()">✏️ Edit Group</button>
-            <button class="action-btn leave-btn" (click)="leaveGroup.emit()">🚪 Leave Group</button>
-          </div>
+  <button class="action-btn" (click)="openAddMemberModal.emit()">
+    ➕ Add Member
+  </button>
+  <button class="action-btn" (click)="openEditGroupModal.emit()">
+    ✏️ Edit Group
+  </button>
+  
+  <!-- Show Delete button only for admins -->
+  <button 
+    *ngIf="isCurrentUserAdmin" 
+    class="action-btn delete-btn" 
+    (click)="openDeleteGroupModal.emit()">
+    🗑️ Delete Group
+  </button>
+  
+  <button 
+    class="action-btn leave-btn" 
+    (click)="leaveGroup.emit()">
+    🚪 Leave Group
+  </button>
+</div>
 
           <h3>Members ({{ currentGroupDetails.members.length }})</h3>
           <div class="members-list-details">
@@ -264,6 +281,51 @@ import { log } from 'console';
       <button class="btn-create"
               (click)="confirmTransferAdmin.emit()"
               [disabled]="!selectedNewAdminId">Assign & Leave</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Group Modal -->
+<div class="modal-overlay" *ngIf="showDeleteGroupModal" (click)="closeDeleteGroupModal.emit()">
+  <div class="modal-content delete-modal" (click)="$event.stopPropagation()">
+    <div class="modal-header delete-header">
+      <h2>⚠️ Delete Group</h2>
+      <button class="close-btn" (click)="closeDeleteGroupModal.emit()">×</button>
+    </div>
+
+    <div class="modal-body">
+      <div class="warning-box">
+        <div class="warning-icon">🗑️</div>
+        <div class="warning-content">
+          <h3>Are you absolutely sure?</h3>
+          <p>This action will <strong>permanently delete</strong> the group "{{ currentGroupDetails?.groupName }}" for all members.</p>
+          <ul class="warning-list">
+            <li>All messages will be permanently deleted</li>
+            <li>All members will be removed immediately</li>
+            <li>This action cannot be undone</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="confirmation-text">
+        <p>Type <strong>DELETE</strong> to confirm:</p>
+        <input
+          type="text"
+          class="form-input delete-confirmation-input"
+          placeholder="Type DELETE to confirm"
+          [(ngModel)]="deleteConfirmationText"
+          (ngModelChange)="deleteConfirmationTextChange.emit($event)" />
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-cancel" (click)="closeDeleteGroupModal.emit()">Cancel</button>
+      <button
+        class="btn-delete"
+        (click)="deleteGroup.emit()"
+        [disabled]="deleteConfirmationText !== 'DELETE'">
+        Delete Group Permanently
+      </button>
     </div>
   </div>
 </div>
@@ -738,6 +800,119 @@ import { log } from 'console';
       object-fit: contain;
       border-radius: 8px;
     }
+
+    .delete-modal {
+  max-width: 520px;
+}
+
+.delete-header {
+  background: #fef2f2;
+  border-bottom-color: #fca5a5;
+}
+
+.delete-header h2 {
+  color: #dc2626;
+}
+
+.warning-box {
+  background: #fef2f2;
+  border: 2px solid #fca5a5;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+  display: flex;
+  gap: 15px;
+}
+
+.warning-icon {
+  font-size: 2.5rem;
+  flex-shrink: 0;
+}
+
+.warning-content h3 {
+  color: #dc2626;
+  margin: 0 0 10px 0;
+  font-size: 1.1rem;
+}
+
+.warning-content p {
+  color: #991b1b;
+  margin: 0 0 12px 0;
+  line-height: 1.5;
+}
+
+.warning-list {
+  margin: 0;
+  padding-left: 20px;
+  color: #7f1d1d;
+}
+
+.warning-list li {
+  margin: 6px 0;
+  line-height: 1.4;
+}
+
+.confirmation-text {
+  margin-top: 20px;
+}
+
+.confirmation-text p {
+  margin-bottom: 10px;
+  color: #475569;
+  font-weight: 600;
+}
+
+.delete-confirmation-input {
+  font-family: monospace;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.btn-delete {
+  background: #dc2626;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.btn-delete:hover:not(:disabled) {
+  background: #b91c1c;
+  transform: translateY(-1px);
+}
+
+.btn-delete:disabled {
+  background: #fca5a5;
+  cursor: not-allowed;
+  transform: none;
+  opacity: 0.6;
+}
+
+.action-btn.delete-btn {
+  background: #fee2e2;
+  color: #dc2626;
+  border-color: #fca5a5;
+  font-weight: 700;
+}
+
+.action-btn.delete-btn:hover {
+  background: #fecaca;
+  border-color: #f87171;
+}
+
+/* Adjust grid layout for multiple buttons */
+.group-actions {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #e2e8f0;
+}
   `]
 })
 export class ModalsComponent {
@@ -808,6 +983,15 @@ export class ModalsComponent {
 @Output() cancelTransferAdmin = new EventEmitter<void>();
 @Output() selectNewAdmin = new EventEmitter<string>();
 @Output() confirmTransferAdmin = new EventEmitter<void>();
+
+// Delete Group
+@Input() showDeleteGroupModal = false;
+@Input() deleteConfirmationText = '';
+
+@Output() openDeleteGroupModal = new EventEmitter<void>();
+@Output() closeDeleteGroupModal = new EventEmitter<void>();
+@Output() deleteConfirmationTextChange = new EventEmitter<string>();
+@Output() deleteGroup = new EventEmitter<void>();
 
 
   isImage(): boolean {

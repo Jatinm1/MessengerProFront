@@ -108,6 +108,12 @@ interface MessageWithDate extends Message {
   (selectNewAdmin)="onSelectNewAdmin($event)"
   (confirmTransferAdmin)="onConfirmTransferAdmin()"
   (cancelTransferAdmin)="onCancelTransferAdmin()"
+
+  [showDeleteGroupModal]="showDeleteGroupModal"
+  [(deleteConfirmationText)]="deleteConfirmationText"
+  (openDeleteGroupModal)="openDeleteGroupModal()"
+  (closeDeleteGroupModal)="closeDeleteGroupModal()"
+  (deleteGroup)="deleteGroup()"
       ></app-modals>
     </div>
   `,
@@ -215,6 +221,10 @@ showTransferAdminModal = false;
 transferableMembers: User[] = [];       // list of members you can assign as admin
 selectedNewAdminId: string | null = null;
 
+// Add these new properties
+  showDeleteGroupModal = false;
+  deleteConfirmationText = '';
+
 
   constructor(
     private authService: AuthService,
@@ -268,6 +278,34 @@ selectedNewAdminId: string | null = null;
           this.openChat(tempContact);
         }, 200);
       }
+    } catch (error) {
+      console.error('Failed to connect to chat hub:', error);
+    }
+
+    try {
+      await this.chatService.connectToHub();
+      console.log('✅ SignalR Hub Connected');
+
+      this.loadFriendsForGroup();
+      this.setupSignalRListeners();
+      
+      // ADD THIS: Listen for group deletion events
+      this.chatService.groupDeleted$
+        .pipe(takeUntil(this.destroy$))
+        .subscribe(data => {
+          // If the current chat is the deleted group, close it
+          if (this.conversationId === data.conversationId) {
+            this.selectedContact = null;
+            this.showChat = false;
+            this.conversationId = null;
+            this.messages = [];
+          }
+          
+          // Show notification to user
+          // alert(`The group "${data.groupName}" has been deleted by an admin.`);
+        });
+
+      // ... rest of existing ngOnInit code ...
     } catch (error) {
       console.error('Failed to connect to chat hub:', error);
     }
@@ -842,6 +880,46 @@ onCancelTransferAdmin(): void {
     };
     reader.readAsDataURL(file);
   }
+
+  openDeleteGroupModal(): void {
+    this.showDeleteGroupModal = true;
+    this.deleteConfirmationText = '';
+  }
+
+  closeDeleteGroupModal(): void {
+    this.showDeleteGroupModal = false;
+    this.deleteConfirmationText = '';
+  }
+
+  deleteGroup(): void {
+    if (this.deleteConfirmationText !== 'DELETE') {
+      return;
+    }
+
+    if (!this.conversationId) {
+      return;
+    }
+
+    this.chatService.deleteGroup(this.conversationId)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: () => {
+          this.closeDeleteGroupModal();
+          this.closeGroupDetailsModal();
+          this.selectedContact = null;
+          this.showChat = false;
+          this.conversationId = null;
+          this.messages = [];
+          alert('Group deleted successfully.');
+        },
+        error: (err) => {
+          console.error('Failed to delete group:', err);
+          const errorMsg = err.error?.error || 'Failed to delete group. You may not have permission.';
+          alert(errorMsg);
+        }
+      });
+  }
+
 
   updateGroupInfo(): void {
     if (!this.conversationId || !this.editGroupName) return;

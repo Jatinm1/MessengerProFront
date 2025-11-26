@@ -282,6 +282,29 @@ export class SidebarComponent implements OnInit, OnDestroy {
       this.contacts = this.contacts.filter(c => c.conversationId !== conversationId);
   });
 
+  this.chatService.groupCreated$
+  .pipe(takeUntil(this.destroy$))
+  .subscribe(group => {
+
+    console.log("[Sidebar] New group created:", group.groupName);
+
+    // Option A — reload entire contacts list
+    this.loadContacts();
+
+    // OR Option B — push only the new group into contacts:
+    // this.contacts.unshift(group);
+  });
+
+
+  this.chatService.groupDeleted$
+  .pipe(takeUntil(this.destroy$))
+  .subscribe(data => {
+    console.log(`[Sidebar] Group deleted: ${data.groupName} (${data.conversationId})`);
+    
+    // Remove the deleted group from contacts list immediately
+    this.contacts = this.contacts.filter(c => c.conversationId !== data.conversationId);
+  });
+
   }
 
   loadContacts(): void {

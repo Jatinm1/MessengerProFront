@@ -30,6 +30,11 @@ export class ChatService {
   private groupLeftSubject = new Subject<string>();
 groupLeft$ = this.groupLeftSubject.asObservable();
 
+private groupCreatedSubject = new Subject<GroupDetails>();
+groupCreated$ = this.groupCreatedSubject.asObservable();
+
+
+
   // Message Status Events
   messageStatusUpdated$ = new Subject<{ messageId: number; status: string }>();
   conversationReadUpdated$ = new Subject<{ conversationId: string; userId: string; lastReadMessageId: number }>();
@@ -42,6 +47,9 @@ groupLeft$ = this.groupLeftSubject.asObservable();
     private http: HttpClient,
     private authService: AuthService
   ) {}
+
+  private groupDeletedSubject = new Subject<{ conversationId: string; groupName: string; deletedBy: string }>();
+groupDeleted$ = this.groupDeletedSubject.asObservable();
 
   private getHeaders(): HttpHeaders {
     const token = this.authService.getToken();
@@ -107,6 +115,17 @@ groupLeft$ = this.groupLeftSubject.asObservable();
 
     this.hubConnection.on("groupLeft", (payload) => {
   this.groupLeftSubject.next(payload.conversationId);
+  
+
+  
+});
+
+this.hubConnection.on("groupCreated", (groupDetails: GroupDetails) => {
+  this.groupCreatedSubject.next(groupDetails);
+});
+
+this.hubConnection.on('groupDeleted', (data: { conversationId: string; groupName: string; deletedBy: string }) => {
+  this.groupDeletedSubject.next(data);
 });
 
 
@@ -117,6 +136,8 @@ groupLeft$ = this.groupLeftSubject.asObservable();
 
     await this.hubConnection.start();
   }
+
+  
 
   async disconnectFromHub(): Promise<void> {
     if (this.hubConnection) {
@@ -282,7 +303,7 @@ transferAdmin(conversationId: string, newAdminId: string): Observable<any> {
   // Group Methods
   createGroup(request: CreateGroupRequest): Observable<ConversationResponse> {
     return this.http.post<ConversationResponse>(
-      `${this.apiBase}/chat/group/create`,
+      `${this.apiBase}/group/create`,
       request,
       { headers: this.getHeaders() }
     );
@@ -317,6 +338,21 @@ transferAdmin(conversationId: string, newAdminId: string): Observable<any> {
     {},
     { headers: this.getHeaders() }
   );
+}
+
+// Add this method for HTTP DELETE
+deleteGroup(conversationId: string): Observable<any> {
+  return this.http.delete(
+    `${this.apiBase}/group/${conversationId}`,
+    { headers: this.getHeaders() }
+  );
+}
+
+// Add this method for SignalR deletion
+async deleteGroupViaHub(conversationId: string): Promise<void> {
+  if (this.hubConnection) {
+    await this.hubConnection.invoke('DeleteGroup', conversationId);
+  }
 }
 
 
