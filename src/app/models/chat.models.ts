@@ -22,17 +22,23 @@ export interface Contact {
   lastSeenUtc?: string;
 }
 
+// Update in chat.models.ts
+
 export interface Message {
   messageId: number;
   conversationId: string;
   fromUserId: string;
   fromUserName: string;
   fromDisplayName?: string;
-  body: string;
-  contentType?: string; // 'text', 'image', 'video'
+  body: string | null;  // Can be null if deleted
+  contentType?: string;
   mediaUrl?: string;
   createdAtUtc: string;
   messageStatus?: 'Sent' | 'Delivered' | 'Read';
+  isEdited?: boolean;
+  editedAtUtc?: string;
+  isDeleted?: boolean;
+  deletedForEveryone?: boolean;
 }
 
 export interface MessageWithDate extends Message {

@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, ViewChild, ElementRef, AfterViewChecked, ChangeDetectionStrategy, ChangeDetectorRef } from '@angular/core';
+import { Component, Input, Output, EventEmitter, ViewChild, ElementRef, AfterViewChecked, ChangeDetectionStrategy, ChangeDetectorRef, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { PickerComponent } from '@ctrl/ngx-emoji-mart';
@@ -16,125 +16,221 @@ interface MessageWithDate extends Message {
   imports: [CommonModule, FormsModule, PickerComponent],
   template: `
     <div class="chat">
-      <div class="messages-wrapper" *ngIf="showChat">
-        <div class="messages" #messagesContainer (scroll)="onScroll()">
-          <ng-container *ngFor="let msg of messages">
-            <div class="date-divider" *ngIf="msg.showDateDivider">
-              <span>{{ msg.dateLabel }}</span>
-            </div>
 
-            <div class="unread-divider" *ngIf="isFirstUnreadMessage(msg)">
-              <span>Unread Messages</span>
-            </div>
+  <!-- Messages Wrapper -->
+  <div class="messages-wrapper" *ngIf="showChat">
+    <div class="messages" #messagesContainer (scroll)="onScroll()">
 
-            <div
-              class="msg"
-              [class.self]="isMessageFromCurrentUser(msg)"
-              [class.other]="!isMessageFromCurrentUser(msg)"
-              [class.media-msg]="isMediaMessage(msg)"
-              [attr.data-message-id]="msg.messageId">
-              <div class="msg-sender" *ngIf="!isMessageFromCurrentUser(msg) && selectedContact?.isGroup">
-                {{ msg.fromDisplayName || msg.fromUserName }}
-              </div>
+      <ng-container *ngFor="let msg of messages">
 
-              <!-- Media Content -->
-              <div class="msg-media" *ngIf="isMediaMessage(msg)">
-                <!-- Image -->
-                <div class="media-content" *ngIf="msg.contentType === 'image'"
-                     (click)="mediaClicked.emit({ url: msg.mediaUrl!, type: 'image' })">
-                  <img [src]="msg.mediaUrl" alt="Image" class="media-image">
-                  <div class="media-overlay">
-                    <span class="view-icon">🔍</span>
-                  </div>
-                </div>
-
-                <!-- Video -->
-                <div class="media-content" *ngIf="msg.contentType === 'video'"
-                     (click)="mediaClicked.emit({ url: msg.mediaUrl!, type: 'video' })">
-                  <img [src]="getVideoThumbnail(msg.mediaUrl!)" alt="Video" class="media-image">
-                  <div class="media-overlay">
-                    <span class="play-icon">▶️</span>
-                  </div>
-                </div>
-
-                <!-- Caption -->
-                <div class="msg-caption" *ngIf="msg.body && msg.body !== msg.mediaUrl">
-                  {{ msg.body }}
-                </div>
-              </div>
-
-              <!-- Text Content -->
-              <div class="msg-body" *ngIf="!isMediaMessage(msg)">{{ msg.body }}</div>
-
-              <div class="meta">
-                {{ formatTime(msg.createdAtUtc) }}
-                <span
-                  *ngIf="isMessageFromCurrentUser(msg)"
-                  class="status-icon"
-                  [class]="getMessageStatusClass(msg.messageStatus)">
-                  {{ getMessageStatusIcon(msg.messageStatus) }}
-                </span>
-              </div>
-            </div>
-          </ng-container>
+        <!-- Date Divider -->
+        <div class="date-divider" *ngIf="msg.showDateDivider">
+          <span>{{ msg.dateLabel }}</span>
         </div>
 
-        <button
-          class="new-messages-btn"
+        <!-- Unread Divider -->
+        <div class="unread-divider" *ngIf="isFirstUnreadMessage(msg)">
+          <span>Unread Messages</span>
+        </div>
+
+        <!-- Message Bubble -->
+        <div
+          class="msg"
+          [class.self]="isMessageFromCurrentUser(msg)"
+          [class.other]="!isMessageFromCurrentUser(msg)"
+          [class.media-msg]="isMediaMessage(msg)"
+          [class.deleted-msg]="msg.isDeleted"
+          [attr.data-message-id]="msg.messageId">
+
+          <!-- Sender Name (Group Only) -->
+          <div class="msg-sender"
+               *ngIf="!isMessageFromCurrentUser(msg) && selectedContact?.isGroup">
+            {{ msg.fromDisplayName || msg.fromUserName }}
+          </div>
+
+          <!-- Message Actions Menu -->
+          <div class="msg-actions" *ngIf="!msg.isDeleted">
+            <button class="msg-actions-btn"
+                    (click)="toggleMessageMenu(msg.messageId)"
+                    type="button">⋮</button>
+
+            <div class="msg-actions-menu"
+                 *ngIf="activeMessageMenu === msg.messageId"
+                 (click)="$event.stopPropagation()">
+
+              <!-- Edit -->
+              <button *ngIf="canEditMessage(msg)"
+                      (click)="startEditMessage(msg)"
+                      class="msg-action-item">
+                ✏️ Edit
+              </button>
+
+              <!-- Delete for Me -->
+              <button (click)="deleteMessage(msg.messageId, false)"
+                      class="msg-action-item">
+                🗑️ Delete for Me
+              </button>
+
+              <!-- Delete for Everyone -->
+              <button *ngIf="canDeleteForEveryone(msg)"
+                      (click)="deleteMessage(msg.messageId, true)"
+                      class="msg-action-item">
+                🗑️ Delete for Everyone
+              </button>
+
+              <!-- Forward -->
+              <button (click)="openForwardModal(msg)"
+                      class="msg-action-item">
+                ↗️ Forward
+              </button>
+
+            </div>
+          </div>
+
+          <!-- Deleted Message -->
+          <div class="msg-deleted" *ngIf="msg.isDeleted">
+            <span class="deleted-icon">🚫</span>
+            <span class="deleted-text">
+              {{ msg.deletedForEveryone ? 'This message was deleted' : 'You deleted this message' }}
+            </span>
+          </div>
+
+          <!-- Normal (Non-deleted) Message -->
+          <ng-container *ngIf="!msg.isDeleted">
+
+            <!-- Media Messages -->
+            <div class="msg-media" *ngIf="isMediaMessage(msg)">
+
+              <!-- Image -->
+              <div class="media-content" *ngIf="msg.contentType === 'image'"
+                   (click)="mediaClicked.emit({ url: msg.mediaUrl!, type: 'image' })">
+                <img [src]="msg.mediaUrl" class="media-image" alt="Image">
+                <div class="media-overlay">
+                  <span class="view-icon">🔍</span>
+                </div>
+              </div>
+
+              <!-- Video -->
+              <div class="media-content" *ngIf="msg.contentType === 'video'"
+                   (click)="mediaClicked.emit({ url: msg.mediaUrl!, type: 'video' })">
+                <img [src]="getVideoThumbnail(msg.mediaUrl!)" class="media-image" alt="Video">
+                <div class="media-overlay">
+                  <span class="play-icon">▶️</span>
+                </div>
+              </div>
+
+              <!-- Caption -->
+              <div class="msg-caption" *ngIf="msg.body && msg.body !== msg.mediaUrl">
+                {{ msg.body }}
+                <span class="edited-indicator" *ngIf="msg.isEdited">(edited)</span>
+              </div>
+
+            </div>
+
+          <!-- Edit Mode -->
+<div class="msg-edit" *ngIf="editingMessageId === msg.messageId" (click)="$event.stopPropagation()">
+  <input 
+    #editInput
+    [(ngModel)]="editMessageText"
+    (keyup.enter)="saveEditMessage(msg.messageId)"
+    (keyup.escape)="cancelEditMessage()"
+    (click)="$event.stopPropagation()"
+    class="edit-input"
+    [attr.data-edit-id]="msg.messageId"
+    type="text"
+    autocomplete="off"
+    spellcheck="false">
+
+  <div class="edit-actions" (click)="$event.stopPropagation()">
+    <button class="edit-cancel" (click)="cancelEditMessage(); $event.stopPropagation()">Cancel</button>
+    <button class="edit-save" (click)="saveEditMessage(msg.messageId); $event.stopPropagation()">Save</button>
+  </div>
+</div>
+
+            <!-- Text Message -->
+            <div class="msg-body"
+                 *ngIf="!isMediaMessage(msg) && editingMessageId !== msg.messageId">
+              {{ msg.body }}
+              <span class="edited-indicator" *ngIf="msg.isEdited">(edited)</span>
+            </div>
+
+            <!-- Time + Tick -->
+            <div class="meta">
+              {{ formatTime(msg.createdAtUtc) }}
+              <span *ngIf="isMessageFromCurrentUser(msg)"
+                    class="status-icon"
+                    [class]="getMessageStatusClass(msg.messageStatus)">
+                {{ getMessageStatusIcon(msg.messageStatus) }}
+              </span>
+            </div>
+
+          </ng-container>
+
+        </div> <!-- END msg -->
+
+      </ng-container> <!-- END ngFor -->
+
+    </div> <!-- END messages -->
+  </div> <!-- END messages-wrapper -->
+
+  <!-- New Messages Button -->
+  <button class="new-messages-btn"
           *ngIf="showNewMessageButton"
           (click)="scrollToNewMessages.emit()">
-          ↓ {{ newMessageCount }} new message{{ newMessageCount > 1 ? 's' : '' }}
-        </button>
-      </div>
+    ↓ {{ newMessageCount }} new message{{ newMessageCount > 1 ? 's' : '' }}
+  </button>
 
-      <div class="no-chat" *ngIf="!showChat">
-        Select a contact to start chatting
-      </div>
+  <!-- No Chat -->
+  <div class="no-chat" *ngIf="!showChat">
+    Select a contact to start chatting
+  </div>
 
-      <!-- Send Area with Media & Emoji Support -->
-      <div class="send-area" *ngIf="showChat">
-        <!-- Hidden file input -->
-        <input
-          type="file"
-          #mediaInput
-          accept="image/*,video/*"
-          (change)="onMediaSelected($event)"
-          style="display: none" />
+  <!-- Send Area -->
+  <div class="send-area" *ngIf="showChat">
 
-        <!-- Emoji Picker Container -->
-        <div class="emoji-picker-container" *ngIf="showEmojiPicker">
-          <emoji-mart
-            (emojiClick)="addEmoji($event)"
-            [showPreview]="false"
-            [isNative]="true"
-            [perLine]="8"
-            [emojiSize]="24"
-            [darkMode]="false"
-            title="Pick your emoji">
-          </emoji-mart>
-        </div>
+    <input type="file"
+           #mediaInput
+           accept="image/*,video/*"
+           (change)="onMediaSelected($event)"
+           style="display:none">
 
-        <!-- Message Input (first) -->
-        <input
-          #messageInput
-          [(ngModel)]="messageText"
-          placeholder="Type a message..."
-          (keyup.enter)="sendMessage()" />
-
-        <!-- Media Button -->
-        <button class="media-btn" (click)="triggerMediaUpload()" type="button" title="Send photo/video">
-          📎
-        </button>
-
-        <!-- Emoji Button -->
-        <button class="emoji-btn" (click)="toggleEmojiPicker.emit()" type="button" title="Add emoji">
-          😊
-        </button>
-
-        <!-- Send Button -->
-        <button (click)="sendMessage()">Send</button>
-      </div>
+    <!-- Emoji Picker -->
+    <div class="emoji-picker-container" *ngIf="showEmojiPicker">
+      <emoji-mart
+        (emojiClick)="addEmoji($event)"
+        [showPreview]="false"
+        [isNative]="true"
+        [perLine]="8"
+        [emojiSize]="24"
+        [darkMode]="false"
+        title="Pick your emoji">
+      </emoji-mart>
     </div>
+
+    <!-- Text Input -->
+    <input #messageInput
+           [(ngModel)]="messageText"
+           placeholder="Type a message..."
+           (keyup.enter)="sendMessage()">
+
+    <button class="media-btn"
+            (click)="triggerMediaUpload()"
+            type="button">
+      📎
+    </button>
+
+    <button class="emoji-btn"
+            (click)="toggleEmojiPicker.emit()"
+            type="button">
+      😊
+    </button>
+
+    <button (click)="sendMessage()">Send</button>
+
+  </div> <!-- END send-area -->
+
+</div> <!-- END chat -->
+
   `,
   styles: [`
     /* Chat Panel */
@@ -519,8 +615,158 @@ interface MessageWithDate extends Message {
       background: #1e40af;
       transform: translateX(-50%) translateY(-2px);
     }
+
+   /* Message Actions */
+    .msg {
+      position: relative;
+    }
+
+    .msg-actions {
+      position: absolute;
+      top: -12px;
+      right: 8px;
+      opacity: 0;
+      transition: opacity 0.2s;
+      z-index: 100;
+    }
+
+    .msg:hover .msg-actions {
+      opacity: 1;
+    }
+
+    .msg-actions-btn {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      width: 28px;
+      height: 28px;
+      cursor: pointer;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      color: #64748b;
+    }
+
+    .msg-actions-btn:hover {
+      background: #f8fafc;
+      border-color: #cbd5e1;
+      color: #1e293b;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .msg-actions-menu {
+      position: absolute;
+      top: 30px;
+      right: 0;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      min-width: 180px;
+      z-index: 1000;
+      overflow: hidden;
+    }
+
+    .msg-action-item {
+      display: block;
+      width: 100%;
+      padding: 10px 16px;
+      border: none;
+      background: white;
+      text-align: left;
+      cursor: pointer;
+      font-size: 0.875rem;
+      transition: background 0.2s;
+    }
+
+    .msg-action-item:hover {
+      background: #f1f5f9;
+    }
+
+    /* Deleted Message */
+    .msg-deleted {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px;
+      font-style: italic;
+      color: #ffffffff;
+    }
+
+    .deleted-icon {
+      font-size: 1.2rem;
+    }
+
+    .deleted-text {
+      font-size: 0.875rem;
+    }
+
+    .deleted-msg {
+      opacity: 0.7;
+    }
+
+    /* Edit Mode */
+    .msg-edit {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 100%;
+    }
+
+    .edit-input {
+      width: 100%;
+      padding: 8px;
+      border: 2px solid #3b82f6;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      outline: none;
+    }
+
+    .edit-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    .edit-cancel,
+    .edit-save {
+      padding: 6px 12px;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .edit-cancel {
+      background: #e2e8f0;
+      color: #475569;
+    }
+
+    .edit-cancel:hover {
+      background: #cbd5e1;
+    }
+
+    .edit-save {
+      background: #3b82f6;
+      color: white;
+    }
+
+    .edit-save:hover {
+      background: #1e40af;
+    }
+
+    /* Edited Indicator */
+    .edited-indicator {
+      font-size: 0.7rem;
+      opacity: 0.7;
+      margin-left: 4px;
+      font-style: italic;
+    }
   `],
-  changeDetection: ChangeDetectionStrategy.OnPush
+  changeDetection: ChangeDetectionStrategy.Default  // ✅ Change from OnPush to Default
 })
 export class MessagesComponent implements AfterViewChecked {
   @ViewChild('messagesContainer') messagesContainer!: ElementRef;
@@ -546,15 +792,130 @@ export class MessagesComponent implements AfterViewChecked {
 
   private _messageText = '';
   private shouldScrollToBottom = false;
+  private focusEditInputFlag = false;
+
+  
+
+
 
   constructor(private cdr: ChangeDetectorRef) {}
 
-  ngAfterViewChecked(): void {
-    if (this.shouldScrollToBottom) {
-      this.scrollToBottom();
-      this.shouldScrollToBottom = false;
+  activeMessageMenu: number | null = null;
+editingMessageId: number | null = null;
+editMessageText = '';
+  
+  // @ViewChild('editInput') editInput!: ElementRef<HTMLInputElement>;
+  @Output() deleteMessageEvent = new EventEmitter<{ messageId: number; deleteForEveryone: boolean }>();
+  @Output() editMessageEvent = new EventEmitter<{ messageId: number; newBody: string }>();
+  @Output() forwardMessageEvent = new EventEmitter<Message>();
+
+  toggleMessageMenu(messageId: number): void {
+    this.activeMessageMenu = this.activeMessageMenu === messageId ? null : messageId;
+  }
+
+  canEditMessage(msg: Message): boolean {
+    // Can edit if: own message, not media, not deleted, not read
+    if (!this.isMessageFromCurrentUser(msg)) return false;
+    if (this.isMediaMessage(msg)) return false;
+    if (msg.isDeleted) return false;
+    if (msg.messageStatus === 'Read') return false;
+    
+    return true;
+  }
+
+  canDeleteForEveryone(msg: Message): boolean {
+    // Can delete for everyone if: own message, within time limit (e.g., 1 hour)
+    if (!this.isMessageFromCurrentUser(msg)) return false;
+    
+    const messageTime = new Date(msg.createdAtUtc).getTime();
+    const now = new Date().getTime();
+    const oneHour = 60 * 60 * 1000;
+    
+    return (now - messageTime) < oneHour;
+  }
+
+  deleteMessage(messageId: number, deleteForEveryone: boolean): void {
+    const confirmMsg = deleteForEveryone 
+      ? 'Delete this message for everyone?' 
+      : 'Delete this message for you?';
+    
+    if (confirm(confirmMsg)) {
+      this.deleteMessageEvent.emit({ messageId, deleteForEveryone });
+      this.activeMessageMenu = null;
     }
   }
+
+startEditMessage(msg: Message): void {
+  this.editingMessageId = msg.messageId;
+  this.editMessageText = msg.body || '';
+  this.activeMessageMenu = null;
+  
+  // Force multiple change detection cycles
+  this.cdr.detectChanges();
+  
+  // Use multiple timeouts to ensure DOM is ready
+  setTimeout(() => {
+    this.cdr.detectChanges();
+    
+    setTimeout(() => {
+      const input = document.querySelector(`input.edit-input[data-edit-id="${msg.messageId}"]`) as HTMLInputElement;
+      if (input) {
+        // Blur the message input first
+        const messageInput = document.querySelector('input[placeholder="Type a message..."]') as HTMLInputElement;
+        if (messageInput) {
+          messageInput.blur();
+        }
+        
+        // Then focus edit input
+        input.focus();
+        input.select();
+      }
+    }, 100);
+  }, 50);
+}
+
+
+
+saveEditMessage(messageId: number): void {
+  if (this.editMessageText.trim() && this.editMessageText !== this.messages.find(m => m.messageId === messageId)?.body) {
+    this.editMessageEvent.emit({ messageId, newBody: this.editMessageText.trim() });
+  }
+  this.cancelEditMessage();
+}
+
+cancelEditMessage(): void {
+  this.editingMessageId = null;
+  this.editMessageText = '';
+  
+  // Restore focus to message input after canceling
+  setTimeout(() => {
+    if (this.messageInput) {
+      this.messageInput.nativeElement.focus();
+    }
+  }, 100);
+}
+
+  openForwardModal(msg: Message): void {
+    this.forwardMessageEvent.emit(msg);
+    this.activeMessageMenu = null;
+  }
+
+  @HostListener('document:click', ['$event'])
+  onDocumentClickForMenu(event: MouseEvent): void {
+    const target = event.target as HTMLElement;
+    if (!target.closest('.msg-actions')) {
+      this.activeMessageMenu = null;
+    }
+  }
+
+  ngAfterViewChecked(): void {
+  if (this.shouldScrollToBottom) {
+    this.scrollToBottom();
+    this.shouldScrollToBottom = false;
+  }
+}
+
+
 
   @Input()
   get messageText(): string {

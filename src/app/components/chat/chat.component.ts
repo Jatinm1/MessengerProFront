@@ -38,24 +38,27 @@ interface MessageWithDate extends Message {
           (openGroupDetails)="openGroupDetails()"
         ></app-group>
 
-        <app-messages
-          #messagesComp
-          [messages]="messages"
-          [selectedContact]="selectedContact"
-          [currentUser]="currentUser"
-          [showChat]="showChat"
-          [showEmojiPicker]="showEmojiPicker"
-          [showNewMessageButton]="showNewMessageButton"
-          [newMessageCount]="newMessageCount"
-          [firstUnreadMessageId]="firstUnreadMessageId"
-          [(messageText)]="messageText"
-          (sendMessageEvent)="sendMessage()"
-          (mediaSelected)="onMediaSelected($event)"
-          (toggleEmojiPicker)="toggleEmojiPicker()"
-          (mediaClicked)="openMediaViewer($event.url, $event.type)"
-          (scroll)="onScroll($event)"
-          (scrollToNewMessages)="scrollToNewMessages()"
-        ></app-messages>
+       <app-messages
+  #messagesComp
+  [messages]="messages"
+  [selectedContact]="selectedContact"
+  [currentUser]="currentUser"
+  [showChat]="showChat"
+  [showEmojiPicker]="showEmojiPicker"
+  [showNewMessageButton]="showNewMessageButton"
+  [newMessageCount]="newMessageCount"
+  [firstUnreadMessageId]="firstUnreadMessageId"
+  [(messageText)]="messageText"
+  (sendMessageEvent)="sendMessage()"
+  (mediaSelected)="onMediaSelected($event)"
+  (toggleEmojiPicker)="toggleEmojiPicker()"
+  (mediaClicked)="openMediaViewer($event.url, $event.type)"
+  (scroll)="onScroll($event)"
+  (scrollToNewMessages)="scrollToNewMessages()"
+  (deleteMessageEvent)="onDeleteMessage($event)"
+  (editMessageEvent)="onEditMessage($event)"
+  (forwardMessageEvent)="onForwardMessage($event)"
+></app-messages>
       </div>
 
       <!-- Modals -->
@@ -114,6 +117,13 @@ interface MessageWithDate extends Message {
   (openDeleteGroupModal)="openDeleteGroupModal()"
   (closeDeleteGroupModal)="closeDeleteGroupModal()"
   (deleteGroup)="deleteGroup()"
+   [showForwardModal]="showForwardModal"
+  [forwardMessage]="forwardMessage"
+  [forwardContacts]="forwardContacts"
+  (closeForwardModal)="closeForwardModal()"
+  (forwardMessageTo)="forwardMessageTo($event)"
+
+
       ></app-modals>
     </div>
   `,
@@ -161,6 +171,7 @@ interface MessageWithDate extends Message {
 })
 export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
   @ViewChild('messagesComp') messagesComp!: MessagesComponent;
+  @ViewChild('editInput') editInput?: ElementRef<HTMLInputElement>;
 
   private destroy$ = new Subject<void>();
   private shouldScrollToBottom = false;
@@ -181,6 +192,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
   showNewMessageButton = false;
   newMessageCount = 0;
   firstUnreadMessageId: number | null = null;
+  editingMessageId: number | null = null;
 
   // Emoji Picker
   showEmojiPicker = false;
@@ -224,6 +236,10 @@ selectedNewAdminId: string | null = null;
 // Add these new properties
   showDeleteGroupModal = false;
   deleteConfirmationText = '';
+
+  showForwardModal = false;
+forwardMessage: Message | null = null;
+forwardContacts: Contact[] = [];
 
 
   constructor(
@@ -288,6 +304,51 @@ selectedNewAdminId: string | null = null;
 
       this.loadFriendsForGroup();
       this.setupSignalRListeners();
+
+   this.chatService.messageDeleted$
+  .pipe(takeUntil(this.destroy$))
+  .subscribe(data => {
+    if (data.conversationId === this.conversationId) {
+      this.messages = this.messages.map(msg => {
+        if (Number(msg.messageId) === data.messageId) {
+          return {
+            ...msg,
+            isDeleted: true,
+            deletedForEveryone: data.deleteForEveryone,
+            body: null
+          };
+        }
+        return msg;
+      });
+      this.cdr.markForCheck();
+    }
+  });
+
+this.chatService.messageEdited$
+  .pipe(takeUntil(this.destroy$))
+  .subscribe(data => {
+    if (data.conversationId === this.conversationId) {
+      this.messages = this.messages.map(msg => {
+        if (Number(msg.messageId) === data.messageId) {
+          return {
+            ...msg,
+            body: data.newBody,
+            isEdited: true,
+            editedAtUtc: data.editedAtUtc
+          };
+        }
+        return msg;
+      });
+      this.cdr.markForCheck();
+    }
+  });
+
+
+this.chatService.messageActionError$
+  .pipe(takeUntil(this.destroy$))
+  .subscribe(error => {
+    alert(error);
+  });
       
       // ADD THIS: Listen for group deletion events
       this.chatService.groupDeleted$
@@ -311,36 +372,44 @@ selectedNewAdminId: string | null = null;
     }
   }
 
-  ngAfterViewChecked(): void {
-    if (this.shouldScrollToBottom) {
-      this.messagesComp.setShouldScrollToBottom(true);
-      this.shouldScrollToBottom = false;
-    }
+ngAfterViewChecked(): void {
+  if (this.shouldScrollToBottom) {
+    this.messagesComp.setShouldScrollToBottom(true);
+    this.shouldScrollToBottom = false;
+  }
 
-    if (this.shouldScrollToTarget) {
-      this.scrollToPosition(this.targetScrollPosition);
-      this.shouldScrollToTarget = false;
-    }
+  if (this.shouldScrollToTarget) {
+    this.scrollToPosition(this.targetScrollPosition);
+    this.shouldScrollToTarget = false;
+  }
 
+  // ✅ Only auto-focus if NOT editing
+  if (this.messagesComp && this.messagesComp.editingMessageId === null) {
     this.autoFocusMessageInput();
   }
+}
 
-  private autoFocusMessageInput(): void {
-    // Don't focus if any modal is open
-    const isAnyModalOpen = this.showCreateGroupModal ||
-                          this.showGroupDetailsModal ||
-                          this.showAddMemberModal ||
-                          this.showEditGroupModal ||
-                          this.showMediaModal ||
-                          this.showMediaViewer ||
-                          this.showEmojiPicker;
-
-    if (this.showChat && !isAnyModalOpen) {
-      setTimeout(() => {
-        this.messagesComp.focusMessageInput();
-      }, 0);
-    }
+private autoFocusMessageInput(): void {
+  // ✅ Don't focus message input if we're editing a message
+  if (this.editingMessageId !== null) {
+    return;
   }
+
+  // Don't focus if any modal is open
+  const isAnyModalOpen = this.showCreateGroupModal ||
+                        this.showGroupDetailsModal ||
+                        this.showAddMemberModal ||
+                        this.showEditGroupModal ||
+                        this.showMediaModal ||
+                        this.showMediaViewer ||
+                        this.showEmojiPicker;
+
+  if (this.showChat && !isAnyModalOpen) {
+    setTimeout(() => {
+      this.messagesComp.focusMessageInput();
+    }, 0);
+  }
+}
 
   ngOnDestroy(): void {
     this.destroy$.next();
@@ -890,6 +959,54 @@ onCancelTransferAdmin(): void {
     this.showDeleteGroupModal = false;
     this.deleteConfirmationText = '';
   }
+
+  onDeleteMessage(event: { messageId: number; deleteForEveryone: boolean }): void {
+  this.chatService.deleteMessageViaHub(event.messageId, event.deleteForEveryone);
+}
+
+onEditMessage(event: { messageId: number; newBody: string }): void {
+  this.chatService.editMessageViaHub(event.messageId, event.newBody);
+}
+
+onForwardMessage(message: Message): void {
+  // Load all contacts for forwarding
+  this.chatService.getContacts()
+    .pipe(takeUntil(this.destroy$))
+    .subscribe(contacts => {
+      // Exclude current conversation
+      this.forwardContacts = contacts.filter(c => c.conversationId !== this.conversationId);
+      this.forwardMessage = message;
+      this.showForwardModal = true;
+    });
+}
+
+closeForwardModal(): void {
+  this.showForwardModal = false;
+  this.forwardMessage = null;
+  this.forwardContacts = [];
+}
+
+forwardMessageTo(contact: Contact): void {
+  if (this.forwardMessage) {
+    this.chatService.forwardMessageViaHub(
+      Number(this.forwardMessage.messageId),
+      contact.conversationId
+    );
+
+    // Close modal
+    this.closeForwardModal();
+
+    // ⭐️ Automatically open the forwarded chat
+    this.openChat(contact);
+
+    // ⭐️ Scroll to bottom
+    setTimeout(() => {
+      this.shouldScrollToBottom = true;
+      this.cdr.detectChanges();
+    }, 200);
+  }
+}
+
 
   deleteGroup(): void {
     if (this.deleteConfirmationText !== 'DELETE') {

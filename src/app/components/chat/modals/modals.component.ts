@@ -1,13 +1,14 @@
 import { Component, Input, Output, EventEmitter, ViewChild, ElementRef } from '@angular/core';
+import { ForwardModalComponent } from './forward-modal.component';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { User, GroupDetails } from '../../../models/chat.models';
+import { User, GroupDetails, Contact, Message } from '../../../models/chat.models';
 import { log } from 'console';
 
 @Component({
   selector: 'app-modals',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule,ForwardModalComponent],
   template: `
     <!-- Media Upload Modal -->
     <div class="modal-overlay" *ngIf="showMediaModal" (click)="cancelMediaUpload.emit()">
@@ -329,6 +330,14 @@ import { log } from 'console';
     </div>
   </div>
 </div>
+
+<app-forward-modal
+  [show]="showForwardModal"
+  [message]="forwardMessage"
+  [contacts]="forwardContacts"
+  (closeModal)="closeForwardModal.emit()"
+  (forwardTo)="forwardMessageTo.emit($event)"
+></app-forward-modal>
 
   `,
   styles: [`
@@ -992,6 +1001,14 @@ export class ModalsComponent {
 @Output() closeDeleteGroupModal = new EventEmitter<void>();
 @Output() deleteConfirmationTextChange = new EventEmitter<string>();
 @Output() deleteGroup = new EventEmitter<void>();
+
+@Input() showForwardModal = false;
+@Input() forwardMessage: Message | null = null;
+@Input() forwardContacts: Contact[] = [];
+
+// Add outputs
+@Output() closeForwardModal = new EventEmitter<void>();
+@Output() forwardMessageTo = new EventEmitter<Contact>();
 
 
   isImage(): boolean {

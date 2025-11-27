@@ -124,6 +124,20 @@ this.hubConnection.on("groupCreated", (groupDetails: GroupDetails) => {
   this.groupCreatedSubject.next(groupDetails);
 });
 
+// Add to connectToHub() method in chat.service.ts
+
+this.hubConnection.on('messageDeleted', (data: { messageId: number; conversationId: string; deletedBy: string; deleteForEveryone: boolean }) => {
+  this.messageDeleted$.next(data);
+});
+
+this.hubConnection.on('messageEdited', (data: { messageId: number; conversationId: string; newBody: string; editedBy: string; editedAtUtc: string }) => {
+  this.messageEdited$.next(data);
+});
+
+this.hubConnection.on('messageActionError', (error: string) => {
+  this.messageActionError$.next(error);
+});
+
 this.hubConnection.on('groupDeleted', (data: { conversationId: string; groupName: string; deletedBy: string }) => {
   this.groupDeletedSubject.next(data);
 });
@@ -426,6 +440,34 @@ async sendDirectMedia(userId: string, mediaUrl: string, mediaType: string, capti
     await this.hubConnection.invoke('SendDirectMedia', userId, mediaUrl, mediaType, caption || '');
   }
 }
+
+// Add to chat.service.ts
+
+// Delete message via SignalR
+async deleteMessageViaHub(messageId: number, deleteForEveryone: boolean): Promise<void> {
+  if (this.hubConnection) {
+    await this.hubConnection.invoke('DeleteMessage', messageId, deleteForEveryone);
+  }
+}
+
+// Edit message via SignalR
+async editMessageViaHub(messageId: number, newBody: string): Promise<void> {
+  if (this.hubConnection) {
+    await this.hubConnection.invoke('EditMessage', messageId, newBody);
+  }
+}
+
+// Forward message via SignalR
+async forwardMessageViaHub(originalMessageId: number, targetConversationId: string): Promise<void> {
+  if (this.hubConnection) {
+    await this.hubConnection.invoke('ForwardMessage', originalMessageId, targetConversationId);
+  }
+}
+
+// Add new Subjects for real-time updates
+messageDeleted$ = new Subject<{ messageId: number; conversationId: string; deletedBy: string; deleteForEveryone: boolean }>();
+messageEdited$ = new Subject<{ messageId: number; conversationId: string; newBody: string; editedBy: string; editedAtUtc: string }>();
+messageActionError$ = new Subject<string>();
 
 // Send group media message via SignalR
 async sendGroupMedia(conversationId: string, mediaUrl: string, mediaType: string, caption?: string): Promise<void> {

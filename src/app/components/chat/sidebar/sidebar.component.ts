@@ -255,58 +255,62 @@ export class SidebarComponent implements OnInit, OnDestroy {
     this.destroy$.complete();
   }
 
-  private setupSignalRListeners(): void {
-    this.chatService.messageReceived$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe(() => this.loadContacts());
+private setupSignalRListeners(): void {
+  this.chatService.messageReceived$
+    .pipe(takeUntil(this.destroy$))
+    .subscribe(() => this.loadContacts());
 
-    this.chatService.messageSent$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe(() => this.loadContacts());
+  this.chatService.messageSent$
+    .pipe(takeUntil(this.destroy$))
+    .subscribe(() => this.loadContacts());
 
-    this.chatService.friendsListUpdated$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe(() => this.loadContacts());
+  this.chatService.friendsListUpdated$
+    .pipe(takeUntil(this.destroy$))
+    .subscribe(() => this.loadContacts());
 
-    this.chatService.conversationMarkedAsRead$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe(() => this.loadContacts());
+  this.chatService.conversationMarkedAsRead$
+    .pipe(takeUntil(this.destroy$))
+    .subscribe(() => this.loadContacts());
 
-    this.chatService.userOnlineStatusChanged$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe(() => this.loadContacts());
-      
-      this.chatService.groupLeft$
-  .pipe(takeUntil(this.destroy$))
-  .subscribe(conversationId => {
+  this.chatService.userOnlineStatusChanged$
+    .pipe(takeUntil(this.destroy$))
+    .subscribe(() => this.loadContacts());
+    
+  this.chatService.groupLeft$
+    .pipe(takeUntil(this.destroy$))
+    .subscribe(conversationId => {
       this.contacts = this.contacts.filter(c => c.conversationId !== conversationId);
-  });
+    });
 
   this.chatService.groupCreated$
-  .pipe(takeUntil(this.destroy$))
-  .subscribe(group => {
-
-    console.log("[Sidebar] New group created:", group.groupName);
-
-    // Option A — reload entire contacts list
-    this.loadContacts();
-
-    // OR Option B — push only the new group into contacts:
-    // this.contacts.unshift(group);
-  });
-
+    .pipe(takeUntil(this.destroy$))
+    .subscribe(group => {
+      console.log("[Sidebar] New group created:", group.groupName);
+      this.loadContacts();
+    });
 
   this.chatService.groupDeleted$
-  .pipe(takeUntil(this.destroy$))
-  .subscribe(data => {
-    console.log(`[Sidebar] Group deleted: ${data.groupName} (${data.conversationId})`);
-    
-    // Remove the deleted group from contacts list immediately
-    this.contacts = this.contacts.filter(c => c.conversationId !== data.conversationId);
-  });
+    .pipe(takeUntil(this.destroy$))
+    .subscribe(data => {
+      console.log(`[Sidebar] Group deleted: ${data.groupName} (${data.conversationId})`);
+      this.contacts = this.contacts.filter(c => c.conversationId !== data.conversationId);
+    });
 
-  }
+  // ✅ ADD THESE TWO NEW LISTENERS
+  this.chatService.messageDeleted$
+    .pipe(takeUntil(this.destroy$))
+    .subscribe(() => {
+      console.log('[Sidebar] Message deleted - reloading contacts');
+      this.loadContacts();
+    });
 
+  this.chatService.messageEdited$
+    .pipe(takeUntil(this.destroy$))
+    .subscribe(() => {
+      console.log('[Sidebar] Message edited - reloading contacts');
+      this.loadContacts();
+    });
+}
   loadContacts(): void {
     this.chatService.getContacts()
       .pipe(takeUntil(this.destroy$))
