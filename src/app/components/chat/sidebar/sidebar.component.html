@@ -1,0 +1,35 @@
+<div class="sidebar">
+  <div class="sidebar-header">
+    <div class="header-content">
+      <span>Logged in as: {{ currentUser?.displayName }}</span>
+      <button class="create-group-btn" (click)="createGroupClicked.emit()" title="Create Group">
+        ➕ Group
+      </button>
+    </div>
+  </div>
+
+  <div class="contacts">
+    <div
+      *ngFor="let contact of contacts"
+      class="contact"
+      [class.active]="isContactActive(contact)"
+      (click)="contactSelected.emit(contact)">
+      <div class="contact-avatar">
+        <img *ngIf="contact.photoUrl" [src]="contact.photoUrl" alt="avatar" class="avatar-img">
+        <span *ngIf="!contact.photoUrl">{{ contact.displayName.charAt(0).toUpperCase() }}</span>
+        <span class="online-dot" *ngIf="!contact.isGroup && contact.isOnline"></span>
+      </div>
+      <div class="info">
+        <div class="name">
+          <span class="group-icon" *ngIf="contact.isGroup">👥</span>
+          {{ contact.displayName }}
+          <span class="unread-badge" *ngIf="contact.unreadCount && contact.unreadCount > 0">
+            {{ contact.unreadCount }}
+          </span>
+        </div>
+        <div class="preview">{{ contact.lastMessage }}</div>
+      </div>
+      <div class="time">{{ formatLastMessageTime(contact.lastMessageTime) }}</div>
+    </div>
+  </div>
+</div>

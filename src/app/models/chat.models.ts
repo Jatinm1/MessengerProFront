@@ -20,6 +20,7 @@ export interface Contact {
   unreadCount?: number;
   isOnline?: boolean;
   lastSeenUtc?: string;
+  lastSeenLocal?: string;
 }
 
 // Update in chat.models.ts
@@ -145,4 +146,37 @@ export interface MessageStatusDto {
   displayName: string;
   status: 'Sent' | 'Delivered' | 'Read';
   statusTimestamp: string;
+}
+
+// Add to chat.models.ts
+
+export interface SearchFilters {
+  query: string;
+  senderId?: string;
+  conversationId?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface SearchResultDto {
+  messageId: number;
+  conversationId: string;
+  senderId: string;
+  senderDisplayName: string;
+  senderPhotoUrl?: string;
+  body: string;
+  contentType: string;
+  mediaUrl?: string;
+  createdAtUtc: string;
+  isGroup: boolean;
+  groupName?: string;
+  conversationName: string;
+  matchedText: string; // Highlighted portion
+}
+
+export interface SearchResponse {
+  results: SearchResultDto[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
 }

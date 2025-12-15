@@ -10,3 +10,206 @@ body {
   height: 100vh;
   overflow: hidden;
 }
+
+/* ============================================
+   CRITICAL VIEWPORT & LAYOUT FIXES
+   Add this to your global styles or main CSS
+   ============================================ */
+
+/* Ensure body and html take full viewport */
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+/* Root app container */
+#root, app-root {
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Main layout container */
+.main-layout {
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+}
+
+/* Chat component must fill available space */
+app-chat,
+.app {
+  height: 100%;
+  display: flex;
+  overflow: hidden;
+}
+
+/* Ensure messages area doesn't overflow */
+.messages-wrapper {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* .messages {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+} */
+
+/* Send area must always be visible */
+.send-area {
+  flex: 0 0 auto;
+  position: sticky;
+  bottom: 0;
+  z-index: 50;
+}
+
+/* Prevent content from pushing send area out of view */
+.chat {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+/* Fix for when chat header exists */
+.chat-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.chat-container > * {
+  flex-shrink: 0;
+}
+
+.chat-container > app-messages,
+.chat-container > .messages-wrapper {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Prevent sidebar from affecting chat height */
+app-sidebar {
+  flex-shrink: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Group header should not affect scrolling */
+app-group,
+.chat-header {
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+}
+
+/* Message input should never be hidden */
+.send-area input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Ensure buttons don't wrap */
+.send-area {
+  flex-wrap: nowrap;
+}
+
+/* Fix emoji picker positioning */
+.emoji-picker-container {
+  position: fixed !important;
+  bottom: 90px !important;
+}
+
+/* Mobile specific fixes */
+@media (max-width: 768px) {
+  .main-content {
+    height: calc(100vh - 64px);
+    overflow: hidden;
+  }
+  
+  .chat-container {
+    height: 100%;
+  }
+  
+  .messages {
+    padding-bottom: 80px;
+  }
+  
+  .send-area {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+  }
+}
+
+/* Scrollbar improvements */
+.messages::-webkit-scrollbar {
+  width: 8px;
+}
+
+.messages::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 8px 0;
+}
+
+.messages::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.messages::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+  background-clip: padding-box;
+}
+
+/* Prevent text selection issues during scroll */
+.messages * {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* Ensure proper flex behavior for all chat children */
+.chat > * {
+  flex-shrink: 0;
+}
+
+.chat > .messages-wrapper {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Fix for no-chat state */
+.no-chat {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Ensure modals don't affect layout */
+app-modals,
+.modal-container {
+  position: fixed;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+app-modals > *,
+.modal-container > * {
+  pointer-events: auto;
+}

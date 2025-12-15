@@ -1,0 +1,31 @@
+<div class="chat-header" *ngIf="selectedContact">
+  <div class="header-left">
+    <div class="chat-avatar">
+      <img *ngIf="getGroupPhotoUrl()" [src]="getGroupPhotoUrl()" alt="avatar" class="avatar-img">
+      <span *ngIf="!getGroupPhotoUrl()">{{ selectedContact.displayName.charAt(0).toUpperCase() }}</span>
+      <span class="online-dot" *ngIf="!selectedContact.isGroup && selectedContact.isOnline"></span>
+    </div>
+
+    <div class="header-info">
+      <div class="header-title">
+        <span class="group-icon" *ngIf="selectedContact.isGroup">👥</span>
+        {{ selectedContact.displayName }}
+      </div>
+
+      <div class="header-status">
+        {{ getContactStatusText(selectedContact) }}
+      </div>
+    </div>
+  </div>
+
+  <button
+    *ngIf="selectedContact.isGroup"
+    class="group-info-btn"
+    (click)="openGroupDetails.emit()">
+    ℹ️ Info
+  </button>
+</div>
+
+<div class="chat-header" *ngIf="!selectedContact">
+  Select a contact to start chatting
+</div>

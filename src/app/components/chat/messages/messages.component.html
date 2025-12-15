@@ -1,0 +1,214 @@
+<div class="chat">
+  <!-- Messages Wrapper -->
+  <div class="messages-wrapper" *ngIf="showChat">
+    <div class="messages" #messagesContainer (scroll)="onScroll()">
+
+      <ng-container *ngFor="let msg of messages">
+
+        <!-- Date Divider -->
+        <div class="date-divider" *ngIf="msg.showDateDivider">
+          <span>{{ msg.dateLabel }}</span>
+        </div>
+
+        <!-- Unread Divider -->
+        <div class="unread-divider" *ngIf="isFirstUnreadMessage(msg)">
+          <span>Unread Messages</span>
+        </div>
+
+        <!-- Message Bubble -->
+        <div
+          class="msg"
+          [class.self]="isMessageFromCurrentUser(msg)"
+          [class.other]="!isMessageFromCurrentUser(msg)"
+          [class.media-msg]="isMediaMessage(msg)"
+          [class.deleted-msg]="msg.isDeleted"
+          [attr.data-message-id]="msg.messageId">
+
+          <!-- Sender Name (Group Only) -->
+          <div class="msg-sender"
+               *ngIf="!isMessageFromCurrentUser(msg) && selectedContact?.isGroup">
+            {{ msg.fromDisplayName || msg.fromUserName }}
+          </div>
+
+          <!-- Message Actions Menu -->
+          <div class="msg-actions" *ngIf="!msg.isDeleted">
+            <button class="msg-actions-btn"
+                    (click)="toggleMessageMenu(msg.messageId)"
+                    type="button">⋮</button>
+
+            <div class="msg-actions-menu"
+                 *ngIf="activeMessageMenu === msg.messageId"
+                 (click)="$event.stopPropagation()">
+
+              <!-- Edit -->
+              <button *ngIf="canEditMessage(msg)"
+                      (click)="startEditMessage(msg)"
+                      class="msg-action-item">
+                ✏️ Edit
+              </button>
+
+              <!-- Delete for Me -->
+              <button (click)="deleteMessage(msg.messageId, false)"
+                      class="msg-action-item">
+                🗑️ Delete for Me
+              </button>
+
+              <!-- Delete for Everyone -->
+              <button *ngIf="canDeleteForEveryone(msg)"
+                      (click)="deleteMessage(msg.messageId, true)"
+                      class="msg-action-item">
+                🗑️ Delete for Everyone
+              </button>
+
+              <!-- Forward -->
+              <button (click)="openForwardModal(msg)"
+                      class="msg-action-item">
+                ↗️ Forward
+              </button>
+
+            </div>
+          </div>
+
+          <!-- Deleted Message -->
+          <div class="msg-deleted" *ngIf="msg.isDeleted">
+            <span class="deleted-icon">🚫</span>
+            <span class="deleted-text">
+              {{ msg.deletedForEveryone ? 'This message was deleted' : 'You deleted this message' }}
+            </span>
+          </div>
+
+          <!-- Normal (Non-deleted) Message -->
+          <ng-container *ngIf="!msg.isDeleted">
+
+            <!-- Media Messages -->
+            <div class="msg-media" *ngIf="isMediaMessage(msg)">
+
+              <!-- Image -->
+              <div class="media-content" *ngIf="msg.contentType === 'image'"
+                   (click)="mediaClicked.emit({ url: msg.mediaUrl!, type: 'image' })">
+                <img [src]="msg.mediaUrl" class="media-image" alt="Image">
+                <div class="media-overlay">
+                  <span class="view-icon">🔍</span>
+                </div>
+              </div>
+
+              <!-- Video -->
+              <div class="media-content" *ngIf="msg.contentType === 'video'"
+                   (click)="mediaClicked.emit({ url: msg.mediaUrl!, type: 'video' })">
+                <img [src]="getVideoThumbnail(msg.mediaUrl!)" class="media-image" alt="Video">
+                <div class="media-overlay">
+                  <span class="play-icon">▶️</span>
+                </div>
+              </div>
+
+              <!-- Caption -->
+              <div class="msg-caption" *ngIf="msg.body && msg.body !== msg.mediaUrl">
+                {{ msg.body }}
+                <span class="edited-indicator" *ngIf="msg.isEdited">(edited)</span>
+              </div>
+
+            </div>
+
+            <!-- Edit Mode -->
+            <div class="msg-edit" *ngIf="editingMessageId === msg.messageId" (click)="$event.stopPropagation()">
+              <input 
+                #editInput
+                [(ngModel)]="editMessageText"
+                (keyup.enter)="saveEditMessage(msg.messageId)"
+                (keyup.escape)="cancelEditMessage()"
+                (click)="$event.stopPropagation()"
+                class="edit-input"
+                [attr.data-edit-id]="msg.messageId"
+                type="text"
+                autocomplete="off"
+                spellcheck="false">
+
+              <div class="edit-actions" (click)="$event.stopPropagation()">
+                <button class="edit-cancel" (click)="cancelEditMessage(); $event.stopPropagation()">Cancel</button>
+                <button class="edit-save" (click)="saveEditMessage(msg.messageId); $event.stopPropagation()">Save</button>
+              </div>
+            </div>
+
+            <!-- Text Message -->
+            <div class="msg-body"
+                 *ngIf="!isMediaMessage(msg) && editingMessageId !== msg.messageId">
+              {{ msg.body }}
+              <span class="edited-indicator" *ngIf="msg.isEdited">(edited)</span>
+            </div>
+
+            <!-- Time + Tick -->
+            <div class="meta">
+              {{ formatTime(msg.createdAtUtc) }}
+              <span *ngIf="isMessageFromCurrentUser(msg)"
+                    class="status-icon"
+                    [class]="getMessageStatusClass(msg.messageStatus)">
+                {{ getMessageStatusIcon(msg.messageStatus) }}
+              </span>
+            </div>
+
+          </ng-container>
+
+        </div> <!-- END msg -->
+
+      </ng-container> <!-- END ngFor -->
+
+    </div> <!-- END messages -->
+  </div> <!-- END messages-wrapper -->
+
+  <!-- New Messages Button -->
+  <button class="new-messages-btn"
+          *ngIf="showNewMessageButton"
+          (click)="scrollToNewMessages.emit()">
+    ↓ {{ newMessageCount }} new message{{ newMessageCount > 1 ? 's' : '' }}
+  </button>
+
+  <!-- No Chat -->
+  <div class="no-chat" *ngIf="!showChat">
+    Select a contact to start chatting
+  </div>
+
+  <!-- Send Area -->
+  <div class="send-area" *ngIf="showChat">
+
+    <input type="file"
+           #mediaInput
+           accept="image/*,video/*"
+           (change)="onMediaSelected($event)"
+           style="display:none">
+
+    <!-- Emoji Picker -->
+    <div class="emoji-picker-container" *ngIf="showEmojiPicker">
+      <emoji-mart
+        (emojiClick)="addEmoji($event)"
+        [showPreview]="false"
+        [isNative]="true"
+        [perLine]="8"
+        [emojiSize]="24"
+        [darkMode]="false"
+        title="Pick your emoji">
+      </emoji-mart>
+    </div>
+
+    <!-- Text Input -->
+    <input #messageInput
+           [(ngModel)]="messageText"
+           placeholder="Type a message..."
+           (keyup.enter)="sendMessage()">
+
+    <button class="media-btn"
+            (click)="triggerMediaUpload()"
+            type="button">
+      📎
+    </button>
+
+    <button class="emoji-btn"
+            (click)="toggleEmojiPicker.emit()"
+            type="button">
+      😊
+    </button>
+
+    <button (click)="sendMessage()">Send</button>
+
+  </div> <!-- END send-area -->
+
+</div> <!-- END chat -->

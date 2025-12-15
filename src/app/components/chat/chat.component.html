@@ -1,439 +1,117 @@
+<!-- Updated chat.component.html -->
 <div class="app">
   <!-- Sidebar -->
-  <div class="sidebar">
-    <div class="sidebar-header">
-      <div class="header-content">
-        <span>Logged in as: {{ currentUser?.displayName }}</span>
-        <button class="create-group-btn" (click)="openCreateGroupModal()" title="Create Group">
-          ➕ Group
-        </button>
-      </div>
-    </div>
-
-    <div class="contacts">
-      <div
-        *ngFor="let contact of contacts"
-        class="contact"
-        [class.active]="isContactActive(contact)"
-        (click)="openChat(contact)">
-        <div class="contact-avatar">
-          <img *ngIf="contact.photoUrl" [src]="contact.photoUrl" alt="avatar" class="avatar-img">
-          <span *ngIf="!contact.photoUrl">{{ contact.displayName.charAt(0).toUpperCase() }}</span>
-          <span class="online-dot" *ngIf="!contact.isGroup && contact.isOnline"></span>
-        </div>
-        <div class="info">
-          <div class="name">
-            <span class="group-icon" *ngIf="contact.isGroup">👥</span>
-            {{ contact.displayName }}
-            <span class="unread-badge" *ngIf="contact.unreadCount && contact.unreadCount > 0">
-              {{ contact.unreadCount }}
-            </span>
-          </div>
-          <div class="preview">{{ contact.lastMessage }}</div>
-        </div>
-        <div class="time">{{ formatLastMessageTime(contact.lastMessageTime) }}</div>
-      </div>
-    </div>
-
-    <div class="divider"></div>
-  </div>
+<app-sidebar
+  #sidebarComp
+  [currentUser]="currentUser"
+  [selectedContact]="selectedContact"
+  (contactSelected)="openChat($event)"
+  (createGroupClicked)="openCreateGroupModal()"
+  (searchClicked)="openSearchModal()">
+</app-sidebar>
 
   <!-- Chat panel -->
-  <div class="chat">
-    <div class="chat-header" *ngIf="selectedContact">
-      <div class="header-left">
-        <div class="chat-avatar">
-          <img *ngIf="getGroupPhotoUrl()" [src]="getGroupPhotoUrl()" alt="avatar" class="avatar-img">
-          <span *ngIf="!getGroupPhotoUrl()">{{ selectedContact.displayName.charAt(0).toUpperCase() }}</span>
-          <span class="online-dot" *ngIf="!selectedContact.isGroup && selectedContact.isOnline"></span>
-        </div>
-        <div class="header-info">
-          <div class="header-title">
-            <span class="group-icon" *ngIf="selectedContact.isGroup">👥</span>
-            {{ selectedContact.displayName }}
-          </div>
-          <div class="header-status">
-            {{ getContactStatusText(selectedContact) }}
-          </div>
-        </div>
-      </div>
-      <button
-        *ngIf="selectedContact.isGroup"
-        class="group-info-btn"
-        (click)="openGroupDetails()">
-        ℹ️ Info
-      </button>
-    </div>
+  <div class="chat-container">
+    <app-group
+      [selectedContact]="selectedContact"
+      (openGroupDetails)="openGroupDetails()"
+    ></app-group>
 
-    <div class="chat-header" *ngIf="!selectedContact">
-      Select a contact to start chatting
-    </div>
-
-    <div class="messages-wrapper" *ngIf="showChat">
-      <div class="messages" #messagesContainer (scroll)="onScroll()">
-        <ng-container *ngFor="let msg of messages">
-          <div class="date-divider" *ngIf="msg.showDateDivider">
-            <span>{{ msg.dateLabel }}</span>
-          </div>
-
-          <div class="unread-divider" *ngIf="isFirstUnreadMessage(msg)">
-            <span>Unread Messages</span>
-          </div>
-
-          <div
-            class="msg"
-            [class.self]="isMessageFromCurrentUser(msg)"
-            [class.other]="!isMessageFromCurrentUser(msg)"
-            [class.media-msg]="isMediaMessage(msg)"
-            [attr.data-message-id]="msg.messageId">
-            <div class="msg-sender" *ngIf="!isMessageFromCurrentUser(msg) && selectedContact?.isGroup">
-              {{ msg.fromDisplayName || msg.fromUserName }}
-            </div>
-
-            <!-- Media Content -->
-            <div class="msg-media" *ngIf="isMediaMessage(msg)">
-              <!-- Image -->
-              <div class="media-content" *ngIf="msg.contentType === 'image'"
-                   (click)="openMediaViewer(msg.mediaUrl!, 'image')">
-                <img [src]="msg.mediaUrl" alt="Image" class="media-image">
-                <div class="media-overlay">
-                  <span class="view-icon">🔍</span>
-                </div>
-              </div>
-
-              <!-- Video -->
-              <div class="media-content" *ngIf="msg.contentType === 'video'"
-                   (click)="openMediaViewer(msg.mediaUrl!, 'video')">
-                <img [src]="getVideoThumbnail(msg.mediaUrl!)" alt="Video" class="media-image">
-                <div class="media-overlay">
-                  <span class="play-icon">▶️</span>
-                </div>
-              </div>
-
-              <!-- Caption -->
-              <div class="msg-caption" *ngIf="msg.body && msg.body !== msg.mediaUrl">
-                {{ msg.body }}
-              </div>
-            </div>
-
-            <!-- Text Content -->
-            <div class="msg-body" *ngIf="!isMediaMessage(msg)">{{ msg.body }}</div>
-
-            <div class="meta">
-              {{ formatTime(msg.createdAtUtc) }}
-              <span
-                *ngIf="isMessageFromCurrentUser(msg)"
-                class="status-icon"
-                [class]="getMessageStatusClass(msg.messageStatus)">
-                {{ getMessageStatusIcon(msg.messageStatus) }}
-              </span>
-            </div>
-          </div>
-        </ng-container>
-      </div>
-
-      <button
-        class="new-messages-btn"
-        *ngIf="showNewMessageButton"
-        (click)="scrollToNewMessages()">
-        ↓ {{ newMessageCount }} new message{{ newMessageCount > 1 ? 's' : '' }}
-      </button>
-    </div>
-
-    <div class="no-chat" *ngIf="!showChat">
-      Select a contact to start chatting
-    </div>
-
-    <!-- Send Area with Media & Emoji Support -->
-    <div class="send-area" *ngIf="showChat">
-      <!-- Hidden file input -->
-      <input
-        type="file"
-        #mediaInput
-        accept="image/*,video/*"
-        (change)="onMediaSelected($event)"
-        style="display: none" />
-
-      <!-- Emoji Picker Container -->
-      <div class="emoji-picker-container" *ngIf="showEmojiPicker">
-        <emoji-mart
-          (emojiClick)="addEmoji($event)"
-          [showPreview]="false"
-          [isNative]="true"
-          [perLine]="8"
-          [emojiSize]="24"
-          [darkMode]="false"
-          title="Pick your emoji">
-        </emoji-mart>
-      </div>
-
-      <!-- Message Input (first) -->
-      <input
-        #messageInput
-        [(ngModel)]="messageText"
-        placeholder="Type a message..."
-        (keyup.enter)="sendMessage()" />
-
-      <!-- Media Button -->
-      <button class="media-btn" (click)="triggerMediaUpload()" type="button" title="Send photo/video">
-        📎
-      </button>
-
-      <!-- Emoji Button -->
-      <button class="emoji-btn" (click)="toggleEmojiPicker()" type="button" title="Add emoji">
-        😊
-      </button>
-
-      <!-- Send Button -->
-      <button (click)="sendMessage()">Send</button>
-    </div>
+    <app-messages
+      #messagesComp
+      [messages]="messages"
+      [selectedContact]="selectedContact"
+      [currentUser]="currentUser"
+      [showChat]="showChat"
+      [showEmojiPicker]="showEmojiPicker"
+      [showNewMessageButton]="showNewMessageButton"
+      [newMessageCount]="newMessageCount"
+      [firstUnreadMessageId]="firstUnreadMessageId"
+      [(messageText)]="messageText"
+      (sendMessageEvent)="sendMessage()"
+      (mediaSelected)="onMediaSelected($event)"
+      (toggleEmojiPicker)="toggleEmojiPicker()"
+      (mediaClicked)="openMediaViewer($event.url, $event.type)"
+      (scroll)="onScroll($event)"
+      (scrollToNewMessages)="scrollToNewMessages()"
+      (deleteMessageEvent)="onDeleteMessage($event)"
+      (editMessageEvent)="onEditMessage($event)"
+      (forwardMessageEvent)="onForwardMessage($event)"
+    ></app-messages>
   </div>
-</div>
 
-<!-- Media Upload Modal -->
-<div class="modal-overlay" *ngIf="showMediaModal" (click)="cancelMediaUpload()">
-  <div class="modal-content media-modal" (click)="$event.stopPropagation()">
-    <div class="modal-header">
-      <h2>Send Media</h2>
-      <button class="close-btn" (click)="cancelMediaUpload()">×</button>
-    </div>
-    <div class="modal-body">
-      <div class="media-preview-large">
-        <img *ngIf="isImage()" [src]="mediaPreview" alt="Preview">
-<video *ngIf="isVideo()" [src]="mediaPreview" controls></video>
-      </div>
-      <div class="form-group">
-        <label>Caption (optional)</label>
-        <input
-          type="text"
-          [(ngModel)]="mediaCaption"
-          placeholder="Add a caption..."
-          class="form-input"
-          [disabled]="isUploadingMedia" />
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-cancel" (click)="cancelMediaUpload()" [disabled]="isUploadingMedia">
-        Cancel
-      </button>
-      <button class="btn-create" (click)="sendMediaMessage()" [disabled]="isUploadingMedia">
-        <span *ngIf="!isUploadingMedia">Send</span>
-        <span *ngIf="isUploadingMedia">Sending...</span>
-      </button>
-    </div>
-  </div>
-</div>
+  <!-- Modals -->
+  <app-modals
+    [showMediaModal]="showMediaModal"
+    [mediaPreview]="mediaPreview"
+    [(mediaCaption)]="mediaCaption"
+    [isUploadingMedia]="isUploadingMedia"
+    [showMediaViewer]="showMediaViewer"
+    [viewerMediaUrl]="viewerMediaUrl"
+    [viewerMediaType]="viewerMediaType"
+    (cancelMediaUpload)="cancelMediaUpload()"
+    (sendMediaMessage)="sendMediaMessage()"
+    (closeMediaViewer)="closeMediaViewer()"
 
-<!-- Media Viewer Modal -->
-<div class="modal-overlay" *ngIf="showMediaViewer" (click)="closeMediaViewer()">
-  <div class="media-viewer-content" (click)="$event.stopPropagation()">
-    <button class="media-viewer-close" (click)="closeMediaViewer()">×</button>
-    <img *ngIf="viewerMediaType === 'image'" [src]="viewerMediaUrl" alt="Full size image" class="media-viewer-image">
-    <video *ngIf="viewerMediaType === 'video'" [src]="viewerMediaUrl" controls class="media-viewer-video"></video>
-  </div>
-</div>
+    [showCreateGroupModal]="showCreateGroupModal"
+    [(groupName)]="groupName"
+    [selectedFriendsForGroup]="selectedFriendsForGroup"
+    [friendsList]="friendsList"
+    (closeCreateGroupModal)="closeCreateGroupModal()"
+    (toggleFriendSelection)="toggleFriendSelection($event)"
+    (createGroup)="createGroup()"
 
-<!-- Create Group Modal -->
-<div class="modal-overlay" *ngIf="showCreateGroupModal" (click)="closeCreateGroupModal()">
-  <div class="modal-content" (click)="$event.stopPropagation()">
-    <div class="modal-header">
-      <h2>Create New Group</h2>
-      <button class="close-btn" (click)="closeCreateGroupModal()">×</button>
-    </div>
-    <div class="modal-body">
-      <div class="form-group">
-        <label>Group Name</label>
-        <input
-          type="text"
-          [(ngModel)]="groupName"
-          placeholder="Enter group name"
-          class="form-input" />
-      </div>
-      <div class="form-group">
-        <label>Select Members ({{ selectedFriendsForGroup.length }} selected)</label>
-        <div class="members-list">
-          <div
-            *ngFor="let friend of friendsList"
-            class="member-item"
-            [class.selected]="isFriendSelected(friend.userId)"
-            (click)="toggleFriendSelection(friend.userId)">
-            <div class="member-avatar">
-              {{ friend.displayName.charAt(0).toUpperCase() }}
-            </div>
-            <div class="member-info">
-              <div class="member-name">{{ friend.displayName }}</div>
-              <div class="member-username">{{ '@' + friend.userName }}</div>
-            </div>
-            <div class="member-check" *ngIf="isFriendSelected(friend.userId)">✓</div>
-          </div>
-          <div class="empty-state" *ngIf="friendsList.length === 0">
-            <p>No friends available. Add friends first to create a group.</p>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-cancel" (click)="closeCreateGroupModal()">Cancel</button>
-      <button class="btn-create" (click)="createGroup()">Create Group</button>
-    </div>
-  </div>
-</div>
+    [showGroupDetailsModal]="showGroupDetailsModal"
+    [currentGroupDetails]="currentGroupDetails"
+    [isCurrentUserAdmin]="isCurrentUserAdmin()"
+    [currentUserId]="currentUser?.userId ?? null"
+    (closeGroupDetailsModal)="closeGroupDetailsModal()"
+    (openAddMemberModal)="openAddMemberModal()"
+    (openEditGroupModal)="openEditGroupModal()"
+    (leaveGroup)="leaveGroup()"
+    (removeMember)="removeMember($event)"
 
-<!-- Group Details Modal -->
-<div class="modal-overlay" *ngIf="showGroupDetailsModal" (click)="closeGroupDetailsModal()">
-  <div class="modal-content" (click)="$event.stopPropagation()">
-    <div class="modal-header">
-      <h2>Group Details</h2>
-      <button class="close-btn" (click)="closeGroupDetailsModal()">×</button>
-    </div>
-    <div class="modal-body" *ngIf="currentGroupDetails">
-      <div class="group-info">
-        <div class="group-avatar-large">
-          <img *ngIf="currentGroupDetails.groupPhotoUrl" [src]="currentGroupDetails.groupPhotoUrl" alt="group" class="avatar-img">
-          <span *ngIf="!currentGroupDetails.groupPhotoUrl">{{ currentGroupDetails.groupName.charAt(0).toUpperCase() }}</span>
-        </div>
-        <h3>{{ currentGroupDetails.groupName }}</h3>
-        <p class="group-created">Created by {{ currentGroupDetails.creatorDisplayName }} on {{ formatLastMessageTime(currentGroupDetails.createdAtUtc) }}</p>
+    [showAddMemberModal]="showAddMemberModal"
+    [availableFriendsToAdd]="availableFriendsToAdd"
+    [(selectedFriendToAdd)]="selectedFriendToAdd"
+    (closeAddMemberModal)="closeAddMemberModal()"
+    (addMember)="addMember()"
 
-        <!-- Admin Controls -->
-        <div class="group-actions" *ngIf="isCurrentUserAdmin()">
-          <button class="btn-action" (click)="openEditGroupModal()">
-            ✏️ Edit Group
-          </button>
-          <button class="btn-action" (click)="openAddMemberModal()">
-            ➕ Add Member
-          </button>
-        </div>
-      </div>
+    [showEditGroupModal]="showEditGroupModal"
+    [(editGroupName)]="editGroupName"
+    [groupPhotoPreview]="groupPhotoPreview"
+    [isUploadingGroupPhoto]="isUploadingGroupPhoto"
+    (closeEditGroupModal)="closeEditGroupModal()"
+    (groupPhotoSelected)="onGroupPhotoSelected($event)"
+    (updateGroupInfo)="updateGroupInfo()"
+    
+    [showTransferAdminModal]="showTransferAdminModal"
+    [transferableMembers]="transferableMembers"
+    [selectedNewAdminId]="selectedNewAdminId"
+    (selectNewAdmin)="onSelectNewAdmin($event)"
+    (confirmTransferAdmin)="onConfirmTransferAdmin()"
+    (cancelTransferAdmin)="onCancelTransferAdmin()"
 
-      <div class="group-members">
-        <h4>Members ({{ currentGroupDetails.members.length }})</h4>
-        <div class="members-list">
-          <div class="member-item" *ngFor="let member of currentGroupDetails.members">
-            <div class="member-avatar">
-              <img *ngIf="member.profilePhotoUrl" [src]="member.profilePhotoUrl" alt="avatar" class="avatar-img">
-              <span *ngIf="!member.profilePhotoUrl">{{ member.displayName.charAt(0).toUpperCase() }}</span>
-            </div>
-            <div class="member-info">
-              <div class="member-name">
-                {{ member.displayName }}
-                <span class="admin-badge" *ngIf="member.isAdmin">Admin</span>
-              </div>
-              <div class="member-username">{{ '@' + member.userName }}</div>
-            </div>
-            <button
-              *ngIf="canRemoveMember(member)"
-              class="btn-remove-member"
-              (click)="removeMember(member.userId, member.displayName)">
-              🗑️
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-cancel" (click)="closeGroupDetailsModal()">Close</button>
-    </div>
-  </div>
-</div>
+    [showDeleteGroupModal]="showDeleteGroupModal"
+    [(deleteConfirmationText)]="deleteConfirmationText"
+    (openDeleteGroupModal)="openDeleteGroupModal()"
+    (closeDeleteGroupModal)="closeDeleteGroupModal()"
+    (deleteGroup)="deleteGroup()"
+    
+    [showForwardModal]="showForwardModal"
+    [forwardMessage]="forwardMessage"
+    [forwardContacts]="forwardContacts"
+    (closeForwardModal)="closeForwardModal()"
+    (forwardMessageTo)="forwardMessageTo($event)"
+  ></app-modals>
 
-<!-- Edit Group Modal -->
-<div class="modal-overlay" *ngIf="showEditGroupModal" (click)="closeEditGroupModal()">
-  <div class="modal-content" (click)="$event.stopPropagation()">
-    <div class="modal-header">
-      <h2>Edit Group</h2>
-      <button class="close-btn" (click)="closeEditGroupModal()">×</button>
-    </div>
-    <div class="modal-body">
-      <!-- Group Photo Upload -->
-      <div class="form-group">
-        <label>Group Photo</label>
-        <div class="photo-upload-container">
-          <div class="photo-preview">
-            <div class="photo-preview-box">
-              <img *ngIf="groupPhotoPreview" [src]="groupPhotoPreview" alt="preview" class="preview-image">
-              <div *ngIf="!groupPhotoPreview" class="preview-placeholder">
-                <span>📷</span>
-                <p>No photo selected</p>
-              </div>
-            </div>
-          </div>
-          <div class="photo-actions">
-            <input
-              type="file"
-              #groupPhotoInput
-              accept="image/*"
-              (change)="onGroupPhotoSelected($event)"
-              style="display: none" />
-            <button class="btn-upload" (click)="triggerGroupPhotoUpload()">
-              📁 Choose Photo
-            </button>
-            <button
-              *ngIf="groupPhotoPreview"
-              class="btn-remove-photo"
-              (click)="removeGroupPhoto()">
-              🗑️ Remove
-            </button>
-          </div>
-        </div>
-      </div>
+  <!-- Search Modal -->
+<app-search-modal
+  *ngIf="showSearchModal"
+  [contacts]="getContactsForSearch()"
+  (closeModal)="closeSearchModal()"
+  (messageSelected)="onMessageSelectedFromSearch($event)">
+</app-search-modal>
 
-      <!-- Group Name -->
-      <div class="form-group">
-        <label>Group Name</label>
-        <input
-          type="text"
-          [(ngModel)]="editGroupName"
-          placeholder="Enter group name"
-          class="form-input" />
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-cancel" (click)="closeEditGroupModal()">Cancel</button>
-      <button class="btn-create" (click)="updateGroup()">Save Changes</button>
-    </div>
-  </div>
-</div>
 
-<!-- Add Member Modal -->
-<div class="modal-overlay" *ngIf="showAddMemberModal" (click)="closeAddMemberModal()">
-  <div class="modal-content" (click)="$event.stopPropagation()">
-    <div class="modal-header">
-      <h2>Add Member</h2>
-      <button class="close-btn" (click)="closeAddMemberModal()">×</button>
-    </div>
-    <div class="modal-body">
-      <div class="form-group">
-        <label>Select a friend to add</label>
-        <div class="members-list">
-          <div
-            *ngFor="let friend of availableFriendsToAdd"
-            class="member-item"
-            [class.selected]="selectedFriendToAdd === friend.userId"
-            (click)="selectedFriendToAdd = friend.userId">
-            <div class="member-avatar">
-              {{ friend.displayName.charAt(0).toUpperCase() }}
-            </div>
-            <div class="member-info">
-              <div class="member-name">{{ friend.displayName }}</div>
-              <div class="member-username">{{ '@' + friend.userName }}</div>
-            </div>
-            <div class="member-check" *ngIf="selectedFriendToAdd === friend.userId">✓</div>
-          </div>
-          <div class="empty-state" *ngIf="availableFriendsToAdd.length === 0">
-            <p>All your friends are already in this group.</p>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-cancel" (click)="closeAddMemberModal()">Cancel</button>
-      <button
-        class="btn-create"
-        [disabled]="!selectedFriendToAdd"
-        (click)="addMemberToGroup()">
-        Add Member
-      </button>
-    </div>
-  </div>
 </div>

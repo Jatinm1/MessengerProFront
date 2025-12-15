@@ -1,0 +1,67 @@
+<div class="main-layout" *ngIf="currentUser">
+  <div class="mobile-header">
+    <button class="menu-toggle" (click)="toggleMobileMenu()">☰</button>
+    <div class="mobile-title">ChatApp</div>
+    <div class="mobile-user">{{ currentUser.displayName }}</div>
+  </div>
+
+  <aside class="sidebar-nav" [class.mobile-open]="mobileMenuOpen">
+    <div class="nav-header">
+      <h2>ChatApp</h2>
+      <div class="user-info" (click)="navigateTo('/profile')" style="cursor: pointer;">
+        <div class="user-avatar">
+          <img 
+            *ngIf="currentUser.profilePhotoUrl" 
+            [src]="currentUser.profilePhotoUrl" 
+            [alt]="currentUser.displayName"
+            class="avatar-image"
+            (error)="onImageError($event)">
+          <span *ngIf="!currentUser.profilePhotoUrl" class="avatar-initials">
+            {{ getInitials(currentUser.displayName) }}
+          </span>
+        </div>
+        <div class="user-details">
+          <div class="user-name">{{ currentUser.displayName }}</div>
+          <div class="user-status">🟢 Online</div>
+        </div>
+      </div>
+    </div>
+
+    <nav class="nav-menu">
+      <button 
+        class="nav-item"
+        [class.active]="isActive('/chat')"
+        (click)="navigateTo('/chat')">
+        💬 <span>Chats</span>
+      </button>
+
+      <button 
+        class="nav-item"
+        [class.active]="isActive('/friends')"
+        (click)="navigateTo('/friends')">
+        👥 <span>Friends</span>
+      </button>
+
+      <button 
+        class="nav-item"
+        [class.active]="isActive('/profile')"
+        (click)="navigateTo('/profile')">
+        👤 <span>Profile</span>
+      </button>
+    </nav>
+
+    <div class="nav-footer">
+      <button class="logout-btn" (click)="logout()">
+        Logout
+      </button>
+    </div>
+  </aside>
+
+  <div class="main-content" (click)="closeMobileMenu()">
+    <router-outlet></router-outlet>
+  </div>
+
+  <div class="mobile-overlay" 
+       [class.active]="mobileMenuOpen"
+       (click)="closeMobileMenu()"></div>
+</div>

@@ -1,0 +1,133 @@
+<div class="profile-container">
+  <div class="profile-card" *ngIf="profile">
+    <!-- Profile Header -->
+    <div class="profile-header">
+      <div class="profile-avatar-large">
+        <img *ngIf="profile.profilePhotoUrl" [src]="profile.profilePhotoUrl" alt="Profile Photo">
+        <span *ngIf="!profile.profilePhotoUrl">{{ getInitials(profile.displayName) }}</span>
+        <span class="online-indicator" *ngIf="profile.isOnline"></span>
+      </div>
+      <h2>{{ profile.displayName }}</h2>
+      <p class="username">{{ '@' + profile.userName }}</p>
+      <p class="status-text">
+        <span *ngIf="profile.isOnline" class="online">🟢 Online</span>
+        <span *ngIf="!profile.isOnline">{{ formatLastSeen(profile.lastSeenUtc) }}</span>
+      </p>
+    </div>
+
+    <!-- Edit Mode -->
+    <div class="profile-body edit-mode" *ngIf="isEditMode && isOwnProfile">
+      <!-- Left: Profile Photo Upload -->
+      <div class="edit-photo-section">
+        <div class="photo-preview-box">
+          <img *ngIf="profilePhotoPreview || profile.profilePhotoUrl" 
+               [src]="profilePhotoPreview || profile.profilePhotoUrl" 
+               alt="preview" 
+               class="preview-image">
+          <div *ngIf="!profilePhotoPreview && !profile?.profilePhotoUrl" class="preview-placeholder">
+            <span>📷</span>
+            <p>No photo selected</p>
+          </div>
+          <div *ngIf="isUploadingPhoto" class="upload-overlay">
+            <div class="spinner small"></div>
+            <p>Uploading...</p>
+          </div>
+        </div>
+        
+        <div class="photo-actions">
+          <input 
+            type="file" 
+            #profilePhotoInput
+            accept="image/*"
+            (change)="onProfilePhotoSelected($event)"
+            style="display: none" />
+          <button class="btn-upload" (click)="triggerProfilePhotoUpload()" [disabled]="isUploadingPhoto">
+            📁 Choose Photo
+          </button>
+          <button *ngIf="profilePhotoPreview" class="btn-cancel-upload" (click)="cancelPhotoUpload()" [disabled]="isUploadingPhoto">
+            Cancel
+          </button>
+        </div>
+        <p class="upload-hint">Supported formats: JPG, PNG, GIF<br>Max size: 10MB</p>
+      </div>
+
+      <!-- Right: Form Fields -->
+      <div class="edit-form-section">
+        <div class="form-group">
+          <label>Display Name</label>
+          <input 
+            type="text" 
+            [(ngModel)]="editDisplayName" 
+            class="form-input"
+            placeholder="Enter display name" />
+        </div>
+        <div class="form-group">
+          <label>Bio</label>
+          <textarea 
+            [(ngModel)]="editBio" 
+            class="form-textarea"
+            placeholder="Tell us about yourself..."
+            rows="4"></textarea>
+        </div>
+        <div class="form-actions">
+          <button class="btn-cancel" (click)="cancelEdit()">Cancel</button>
+          <button class="btn-save" (click)="saveProfile()" [disabled]="isUploadingPhoto">Save Changes</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- View Mode -->
+    <div class="profile-body view-mode" *ngIf="!isEditMode">
+      <div class="info-section">
+        <div class="info-item">
+          <label>Bio</label>
+          <p>{{ profile.bio || 'No bio yet' }}</p>
+        </div>
+        <div class="info-item">
+          <label>Member Since</label>
+          <p>{{ formatDate(profile.createdAtUtc) }}</p>
+        </div>
+        <div class="info-item" *ngIf="!isOwnProfile">
+          <label>Friendship Status</label>
+          <p>
+            <span class="friendship-badge" [class.friends]="profile.areFriends">
+              {{ profile.areFriends ? '✓ Friends' : 'Not Friends' }}
+            </span>
+          </p>
+        </div>
+      </div>
+
+      <div class="action-buttons">
+        <button 
+          *ngIf="isOwnProfile" 
+          class="btn-edit" 
+          (click)="enterEditMode()">
+          ✏️ Edit Profile
+        </button>
+        <button 
+          *ngIf="!isOwnProfile && !profile.areFriends" 
+          class="btn-add-friend"
+          (click)="sendFriendRequest()">
+          ➕ Add Friend
+        </button>
+        <button 
+          *ngIf="!isOwnProfile && profile.areFriends" 
+          class="btn-message"
+          (click)="startChat()">
+          💬 Message
+        </button>
+      </div>
+    </div>
+
+    <!-- Messages -->
+    <div class="messages" *ngIf="successMessage || errorMessage">
+      <div class="success-message" *ngIf="successMessage">{{ successMessage }}</div>
+      <div class="error-message" *ngIf="errorMessage">{{ errorMessage }}</div>
+    </div>
+  </div>
+
+  <div class="loading" *ngIf="!profile">
+    <div class="spinner"></div>
+    <p>Loading profile...</p>
+  </div>
+</div>

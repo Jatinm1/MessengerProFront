@@ -121,10 +121,10 @@ import { log } from 'console';
           </div>
 
           <div class="group-actions">
-  <button class="action-btn" (click)="openAddMemberModal.emit()">
+  <button *ngIf="isCurrentUserAdmin" class="action-btn" (click)="openAddMemberModal.emit()">
     ➕ Add Member
   </button>
-  <button class="action-btn" (click)="openEditGroupModal.emit()">
+  <button *ngIf="isCurrentUserAdmin" class="action-btn" (click)="openEditGroupModal.emit()">
     ✏️ Edit Group
   </button>
   

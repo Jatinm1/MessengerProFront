@@ -1,3 +1,4 @@
+// Updated sidebar.component.ts
 import { Component, OnInit, OnDestroy, Input, Output, EventEmitter } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Subject, takeUntil } from 'rxjs';
@@ -13,9 +14,14 @@ import { ChatService } from '../../../services/chat.service';
       <div class="sidebar-header">
         <div class="header-content">
           <span>Logged in as: {{ currentUser?.displayName }}</span>
-          <button class="create-group-btn" (click)="createGroupClicked.emit()" title="Create Group">
-            ➕ Group
-          </button>
+          <div class="header-actions">
+            <button class="search-btn" (click)="searchClicked.emit()" title="Search Messages">
+              🔍
+            </button>
+            <button class="create-group-btn" (click)="createGroupClicked.emit()" title="Create Group">
+              ➕ Group
+            </button>
+          </div>
         </div>
       </div>
 
@@ -47,191 +53,241 @@ import { ChatService } from '../../../services/chat.service';
   `,
   styles: [`
     /* Sidebar */
-    .sidebar {
-      width: 340px;
-      border-right: 1px solid #e2e8f0;
-      display: flex;
-      flex-direction: column;
-      background: #f8fafc;
-      height: 100vh;
-    }
+   /* Modern Sidebar Styles */
+.sidebar {
+  width: 360px;
+  border-right: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  height: 100vh;
+}
 
-    .sidebar-header {
-      background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
-      color: white;
-      padding: 16px 20px;
-      box-shadow: 0 4px 12px rgba(13, 148, 136, 0.15);
-    }
+.sidebar-header {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
 
-    .header-content {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 10px;
-      font-size: 0.875rem;
-      font-weight: 500;
-    }
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
 
-    .unread-badge {
+.header-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.search-btn,
+.create-group-btn {
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+  backdrop-filter: blur(10px);
+}
+
+.search-btn {
+  font-size: 1.1rem;
+  padding: 8px 12px;
+}
+
+.search-btn:hover,
+.create-group-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.contacts {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.contact {
+  padding: 14px 16px;
+  cursor: pointer;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  margin: 2px 0;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  position: relative;
+}
+
+.contact::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 0;
+  background: #3b82f6;
+  border-radius: 0 3px 3px 0;
+  transition: height 0.2s;
+}
+
+.contact:hover {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+.contact:hover::before {
+  height: 60%;
+}
+
+.contact.active {
+  background: linear-gradient(90deg, #eff6ff 0%, #dbeafe 100%);
+  border-color: #bfdbfe;
+}
+
+.contact.active::before {
+  height: 70%;
+}
+
+.contact-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2);
+}
+
+.avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 14px;
+}
+
+.online-dot {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 14px;
+  height: 14px;
+  background: #10b981;
+  border: 3px solid white;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+}
+
+.info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.name {
+  font-weight: 600;
+  color: #1e293b;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 1.4;
+}
+
+.group-icon {
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
+
+.unread-badge {
   background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
   color: white;
-  border-radius: 10px;
-  padding: 2px 7px;
-  font-size: 0.65rem;
+  border-radius: 12px;
+  padding: 3px 9px;
+  font-size: 0.7rem;
   font-weight: 700;
-  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.35);
-  min-width: 18px;
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.3);
+  min-width: 22px;
   text-align: center;
 }
 
-    .create-group-btn {
-      background: rgba(255, 255, 255, 0.2);
-      border: 1px solid rgba(255, 255, 255, 0.3);
-      color: white;
-      padding: 6px 12px;
-      border-radius: 8px;
-      font-size: 0.75rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s;
-      white-space: nowrap;
-    }
+.preview {
+  font-size: 0.85rem;
+  color: #64748b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.4;
+}
 
-    .create-group-btn:hover {
-      background: rgba(255, 255, 255, 0.3);
-      transform: translateY(-1px);
-    }
+.time {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  font-weight: 500;
+  flex-shrink: 0;
+  align-self: flex-start;
+  margin-top: 2px;
+}
 
-    /* Contact Avatar */
-    .contact-avatar,
-    .chat-avatar,
-    .member-avatar {
-      width: 44px;
-      height: 44px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
-      color: white;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1.1rem;
-      font-weight: 700;
-      flex-shrink: 0;
-      position: relative;
-      overflow: hidden;
-    }
+.contact.active .time {
+  color: #3b82f6;
+  font-weight: 600;
+}
 
-    .avatar-img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      border-radius: 50%;
-    }
+/* Scrollbar Styling */
+.contacts::-webkit-scrollbar {
+  width: 8px;
+}
 
-    .online-dot {
-      position: absolute;
-      bottom: 2px;
-      right: 2px;
-      width: 12px;
-      height: 12px;
-      background: #10b981;
-      border: 2px solid white;
-      border-radius: 50%;
-      box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
-    }
+.contacts::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 8px 0;
+}
 
-    .contact {
-      padding: 12px 14px;
-      cursor: pointer;
-      background: #ffffff;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-      margin: 3px 0;
-      border-radius: 10px;
-      border: 1px solid transparent;
-      position: relative;
-    }
+.contacts::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
 
-    .contact::before {
-      content: '';
-      position: absolute;
-      left: 0;
-      top: 0;
-      bottom: 0;
-      width: 3px;
-      background: #14b8a6;
-      border-radius: 10px 0 0 10px;
-      opacity: 0;
-      transition: opacity 0.2s;
-    }
+.contacts::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+  background-clip: padding-box;
+}
 
-    .contact:hover {
-      background: #f1f5f9;
-      border-color: #e2e8f0;
-      transform: translateX(2px);
-    }
-
-    .contact.active {
-      background: linear-gradient(90deg, #dbeafe 0%, #eff6ff 100%);
-      border-color: #3b82f6;
-      box-shadow: 0 2px 8px rgba(20, 184, 166, 0.12);
-    }
-
-    .contact.active::before {
-      background: #3b82f6;
-      opacity: 1;
-    }
-
-    .contact .info {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      flex: 1;
-      min-width: 0;
-    }
-
-    .contact .name {
-      font-weight: 600;
-      color: #1e293b;
-      font-size: 0.9rem;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .group-icon {
-      font-size: 0.85rem;
-    }
-
-    .contact .preview {
-      font-size: 0.8rem;
-      color: #64748b;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .contact .time {
-      font-size: 0.7rem;
-      color: #94a3b8;
-      font-weight: 500;
-      flex-shrink: 0;
-    }
-
-    .contacts {
-      flex: 1;
-      overflow-y: auto;
-      padding: 4px 8px;
-      max-height: 100%;
-    }
-
-    .divider {
-      background: #e2e8f0;
-      height: 1px;
-      margin: 8px 0;
-    }
+@media (max-width: 768px) {
+  .sidebar {
+    width: 100%;
+  }
+  
+  .contact-avatar {
+    width: 48px;
+    height: 48px;
+  }
+}
   `]
 })
 export class SidebarComponent implements OnInit, OnDestroy {
@@ -239,6 +295,7 @@ export class SidebarComponent implements OnInit, OnDestroy {
   @Input() selectedContact: Contact | null = null;
   @Output() contactSelected = new EventEmitter<Contact>();
   @Output() createGroupClicked = new EventEmitter<void>();
+  @Output() searchClicked = new EventEmitter<void>(); // NEW
 
   contacts: Contact[] = [];
   private destroy$ = new Subject<void>();
@@ -255,62 +312,62 @@ export class SidebarComponent implements OnInit, OnDestroy {
     this.destroy$.complete();
   }
 
-private setupSignalRListeners(): void {
-  this.chatService.messageReceived$
-    .pipe(takeUntil(this.destroy$))
-    .subscribe(() => this.loadContacts());
+  private setupSignalRListeners(): void {
+    this.chatService.messageReceived$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(() => this.loadContacts());
 
-  this.chatService.messageSent$
-    .pipe(takeUntil(this.destroy$))
-    .subscribe(() => this.loadContacts());
+    this.chatService.messageSent$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(() => this.loadContacts());
 
-  this.chatService.friendsListUpdated$
-    .pipe(takeUntil(this.destroy$))
-    .subscribe(() => this.loadContacts());
+    this.chatService.friendsListUpdated$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(() => this.loadContacts());
 
-  this.chatService.conversationMarkedAsRead$
-    .pipe(takeUntil(this.destroy$))
-    .subscribe(() => this.loadContacts());
+    this.chatService.conversationMarkedAsRead$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(() => this.loadContacts());
 
-  this.chatService.userOnlineStatusChanged$
-    .pipe(takeUntil(this.destroy$))
-    .subscribe(() => this.loadContacts());
-    
-  this.chatService.groupLeft$
-    .pipe(takeUntil(this.destroy$))
-    .subscribe(conversationId => {
-      this.contacts = this.contacts.filter(c => c.conversationId !== conversationId);
-    });
+    this.chatService.userStatusChanged$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(() => this.loadContacts());
+      
+    this.chatService.groupLeft$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(data => {
+        this.contacts = this.contacts.filter(c => c.conversationId !== data.conversationId);
+      });
 
-  this.chatService.groupCreated$
-    .pipe(takeUntil(this.destroy$))
-    .subscribe(group => {
-      console.log("[Sidebar] New group created:", group.groupName);
-      this.loadContacts();
-    });
+    this.chatService.groupCreated$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(group => {
+        console.log("[Sidebar] New group created:", group.groupName);
+        this.loadContacts();
+      });
 
-  this.chatService.groupDeleted$
-    .pipe(takeUntil(this.destroy$))
-    .subscribe(data => {
-      console.log(`[Sidebar] Group deleted: ${data.groupName} (${data.conversationId})`);
-      this.contacts = this.contacts.filter(c => c.conversationId !== data.conversationId);
-    });
+    this.chatService.groupDeleted$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(data => {
+        console.log(`[Sidebar] Group deleted: ${data.groupName} (${data.conversationId})`);
+        this.contacts = this.contacts.filter(c => c.conversationId !== data.conversationId);
+      });
 
-  // ✅ ADD THESE TWO NEW LISTENERS
-  this.chatService.messageDeleted$
-    .pipe(takeUntil(this.destroy$))
-    .subscribe(() => {
-      console.log('[Sidebar] Message deleted - reloading contacts');
-      this.loadContacts();
-    });
+    this.chatService.messageDeleted$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(() => {
+        console.log('[Sidebar] Message deleted - reloading contacts');
+        this.loadContacts();
+      });
 
-  this.chatService.messageEdited$
-    .pipe(takeUntil(this.destroy$))
-    .subscribe(() => {
-      console.log('[Sidebar] Message edited - reloading contacts');
-      this.loadContacts();
-    });
-}
+    this.chatService.messageEdited$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(() => {
+        console.log('[Sidebar] Message edited - reloading contacts');
+        this.loadContacts();
+      });
+  }
+
   loadContacts(): void {
     this.chatService.getContacts()
       .pipe(takeUntil(this.destroy$))
