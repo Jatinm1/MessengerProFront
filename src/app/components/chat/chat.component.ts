@@ -1,17 +1,33 @@
-import { Component, OnInit, OnDestroy, ViewChild, ElementRef, AfterViewChecked, ChangeDetectorRef, HostListener } from '@angular/core';
+import {
+  Component,
+  OnInit,
+  OnDestroy,
+  ViewChild,
+  ElementRef,
+  AfterViewChecked,
+  ChangeDetectorRef,
+  HostListener,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { Subject, takeUntil } from 'rxjs';
 import { AuthService } from '../../services/auth.service';
 import { ChatService } from '../../services/chat.service';
-import { Contact, Message, User, GroupDetails, CreateGroupRequest, SearchResultDto } from '../../models/chat.models';
+import {
+  Contact,
+  Message,
+  User,
+  GroupDetails,
+  CreateGroupRequest,
+  SearchResultDto,
+} from '../../models/chat.models';
 import { GroupComponent } from './group/group.component';
 import { MessagesComponent } from './messages/messages.component';
 import { ModalsComponent } from './modals/modals.component';
 import { SidebarComponent } from './sidebar/sidebar.component';
 import { SearchModalComponent } from './modals/search-modal/search-modal.component';
-
+import Swal from 'sweetalert2';
 
 interface MessageWithDate extends Message {
   dateLabel?: string;
@@ -21,15 +37,22 @@ interface MessageWithDate extends Message {
 @Component({
   selector: 'app-chat',
   standalone: true,
-  imports: [CommonModule, FormsModule, SidebarComponent, GroupComponent, MessagesComponent, ModalsComponent,SearchModalComponent ],
+  imports: [
+    CommonModule,
+    FormsModule,
+    SidebarComponent,
+    GroupComponent,
+    MessagesComponent,
+    ModalsComponent,
+    SearchModalComponent,
+  ],
   templateUrl: './chat.component.html',
-  styleUrls: ['./chat.component.css']
+  styleUrls: ['./chat.component.css'],
 })
 export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
   @ViewChild('messagesComp') messagesComp!: MessagesComponent;
   @ViewChild('editInput') editInput?: ElementRef<HTMLInputElement>;
   @ViewChild('sidebarComp') sidebarComp!: SidebarComponent;
-
 
   private destroy$ = new Subject<void>();
   private shouldScrollToBottom = false;
@@ -43,7 +66,6 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
   currentUser: User | null = null;
   messages: MessageWithDate[] = [];
   contacts: Contact[] = []; // NEW: Store contacts for search modal
-
 
   currentChatUserId: string | null = null;
   conversationId: string | null = null;
@@ -92,7 +114,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
   viewerMediaType: 'image' | 'video' | null = null;
 
   showTransferAdminModal = false;
-  transferableMembers: User[] = [];       // list of members you can assign as admin
+  transferableMembers: User[] = []; // list of members you can assign as admin
   selectedNewAdminId: string | null = null;
 
   // Add these new properties
@@ -115,11 +137,13 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     const emojiPicker = document.querySelector('.emoji-picker-container');
     const emojiBtn = document.querySelector('.emoji-btn');
 
-    if (this.showEmojiPicker &&
-        emojiPicker &&
-        !emojiPicker.contains(event.target as Node) &&
-        emojiBtn &&
-        !emojiBtn.contains(event.target as Node)) {
+    if (
+      this.showEmojiPicker &&
+      emojiPicker &&
+      !emojiPicker.contains(event.target as Node) &&
+      emojiBtn &&
+      !emojiBtn.contains(event.target as Node)
+    ) {
       this.showEmojiPicker = false;
     }
   }
@@ -150,7 +174,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
             isGroup: state.isGroup || false,
             userId: state.userId,
             displayName: state.displayName,
-            unreadCount: 0
+            unreadCount: 0,
           };
           this.openChat(tempContact);
         }, 200);
@@ -168,15 +192,15 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
 
       this.chatService.messageDeleted$
         .pipe(takeUntil(this.destroy$))
-        .subscribe(data => {
+        .subscribe((data) => {
           if (data.conversationId === this.conversationId) {
-            this.messages = this.messages.map(msg => {
+            this.messages = this.messages.map((msg) => {
               if (Number(msg.messageId) === data.messageId) {
                 return {
                   ...msg,
                   isDeleted: true,
                   deletedForEveryone: data.deleteForEveryone,
-                  body: null
+                  body: null,
                 };
               }
               return msg;
@@ -187,15 +211,15 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
 
       this.chatService.messageEdited$
         .pipe(takeUntil(this.destroy$))
-        .subscribe(data => {
+        .subscribe((data) => {
           if (data.conversationId === this.conversationId) {
-            this.messages = this.messages.map(msg => {
+            this.messages = this.messages.map((msg) => {
               if (Number(msg.messageId) === data.messageId) {
                 return {
                   ...msg,
                   body: data.newBody,
                   isEdited: true,
-                  editedAtUtc: data.editedAtUtc
+                  editedAtUtc: data.editedAtUtc,
                 };
               }
               return msg;
@@ -206,14 +230,14 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
 
       this.chatService.messageActionError$
         .pipe(takeUntil(this.destroy$))
-        .subscribe(error => {
+        .subscribe((error) => {
           alert(error);
         });
-      
+
       // ADD THIS: Listen for group deletion events
       this.chatService.groupDeleted$
         .pipe(takeUntil(this.destroy$))
-        .subscribe(data => {
+        .subscribe((data) => {
           // If the current chat is the deleted group, close it
           if (this.conversationId === data.conversationId) {
             this.selectedContact = null;
@@ -221,7 +245,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
             this.conversationId = null;
             this.messages = [];
           }
-          
+
           // Show notification to user
           // alert(`The group "${data.groupName}" has been deleted by an admin.`);
         });
@@ -256,14 +280,15 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     }
 
     // Don't focus if any modal is open
-    const isAnyModalOpen = this.showCreateGroupModal ||
-                          this.showGroupDetailsModal ||
-                          this.showAddMemberModal ||
-                          this.showEditGroupModal ||
-                          this.showMediaModal ||
-                          this.showMediaViewer ||
-                          this.showEmojiPicker||
-                          this.showSearchModal;
+    const isAnyModalOpen =
+      this.showCreateGroupModal ||
+      this.showGroupDetailsModal ||
+      this.showAddMemberModal ||
+      this.showEditGroupModal ||
+      this.showMediaModal ||
+      this.showMediaViewer ||
+      this.showEmojiPicker ||
+      this.showSearchModal;
 
     if (this.showChat && !isAnyModalOpen) {
       setTimeout(() => {
@@ -284,7 +309,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
 
     this.chatService.messageReceived$
       .pipe(takeUntil(this.destroy$))
-      .subscribe(message => {
+      .subscribe((message) => {
         if (message.fromUserId === this.currentUser?.userId) return;
 
         if (message.conversationId === this.conversationId) {
@@ -302,15 +327,17 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
 
     this.chatService.messageSent$
       .pipe(takeUntil(this.destroy$))
-      .subscribe(message => {
+      .subscribe((message) => {
         this.addMessageToView(message, true);
         this.shouldScrollToBottom = true;
       });
 
     this.chatService.messageStatusUpdated$
       .pipe(takeUntil(this.destroy$))
-      .subscribe(data => {
-        const msg = this.messages.find(m => Number(m.messageId) === data.messageId);
+      .subscribe((data) => {
+        const msg = this.messages.find(
+          (m) => Number(m.messageId) === data.messageId
+        );
         if (msg) {
           msg.messageStatus = data.status as any;
           this.cdr.detectChanges();
@@ -319,10 +346,12 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
 
     this.chatService.conversationReadUpdated$
       .pipe(takeUntil(this.destroy$))
-      .subscribe(data => {
-        this.messages.forEach(msg => {
-          if (Number(msg.messageId) <= data.lastReadMessageId &&
-              msg.fromUserId === this.currentUser?.userId) {
+      .subscribe((data) => {
+        this.messages.forEach((msg) => {
+          if (
+            Number(msg.messageId) <= data.lastReadMessageId &&
+            msg.fromUserId === this.currentUser?.userId
+          ) {
             msg.messageStatus = 'Read';
           }
         });
@@ -331,7 +360,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
 
     this.chatService.conversationMarkedAsRead$
       .pipe(takeUntil(this.destroy$))
-      .subscribe(data => {
+      .subscribe((data) => {
         if (data.conversationId === this.conversationId) {
           this.firstUnreadMessageId = null;
           this.cdr.detectChanges();
@@ -340,59 +369,64 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
   }
 
   loadFriendsForGroup(): void {
-    this.chatService.getFriendsList()
+    this.chatService
+      .getFriendsList()
       .pipe(takeUntil(this.destroy$))
-      .subscribe(friends => {
-        this.friendsList = friends.map(f => ({
-          userId: f.friendUserId,
-          userName: f.friendUserName,
-          displayName: f.friendDisplayName,
-        } as User));
+      .subscribe((friends) => {
+        this.friendsList = friends.map(
+          (f) =>
+            ({
+              userId: f.friendUserId,
+              userName: f.friendUserName,
+              displayName: f.friendDisplayName,
+            } as User)
+        );
       });
   }
 
- openChat(contact: Contact): void {
-  if (this.selectedContact?.conversationId === contact.conversationId) return;
+  openChat(contact: Contact): void {
+    if (this.selectedContact?.conversationId === contact.conversationId) return;
 
-  this.selectedContact = contact;
-  this.conversationId = contact.conversationId;
-  this.currentChatUserId = contact.userId || null;
-  this.showChat = true;
-  this.messages = [];
-  this.userScrolledUp = false;
-  this.showNewMessageButton = false;
-  this.newMessageCount = 0;
-  this.firstUnreadMessageId = null;
-  
-  // Don't clear searchTargetMessageId here - it's needed for the scroll
+    this.selectedContact = contact;
+    this.conversationId = contact.conversationId;
+    this.currentChatUserId = contact.userId || null;
+    this.showChat = true;
+    this.messages = [];
+    this.userScrolledUp = false;
+    this.showNewMessageButton = false;
+    this.newMessageCount = 0;
+    this.firstUnreadMessageId = null;
 
-  this.loadHistory();
-  this.loadGroupDetailsIfGroup();
-}
+    // Don't clear searchTargetMessageId here - it's needed for the scroll
 
-loadHistory(): void {
-  this.chatService.getHistory(this.conversationId!)
-    .pipe(takeUntil(this.destroy$))
-    .subscribe(history => {
-      this.messages = this.processMessages(history.reverse());
-      
-      // Only scroll to bottom if we're NOT trying to scroll to a specific message
-      if (!this.searchTargetMessageId) {
-        this.shouldScrollToBottom = true;
-        this.markLastMessageAsRead();
-      } else {
-        console.log('Search target set, skipping auto-scroll to bottom');
-      }
-    });
-}
+    this.loadHistory();
+    this.loadGroupDetailsIfGroup();
+  }
 
+  loadHistory(): void {
+    this.chatService
+      .getHistory(this.conversationId!)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((history) => {
+        this.messages = this.processMessages(history.reverse());
+
+        // Only scroll to bottom if we're NOT trying to scroll to a specific message
+        if (!this.searchTargetMessageId) {
+          this.shouldScrollToBottom = true;
+          this.markLastMessageAsRead();
+        } else {
+          console.log('Search target set, skipping auto-scroll to bottom');
+        }
+      });
+  }
 
   loadGroupDetailsIfGroup(): void {
     this.currentGroupDetails = null;
     if (this.selectedContact?.isGroup) {
-      this.chatService.getGroupDetails(this.conversationId!)
+      this.chatService
+        .getGroupDetails(this.conversationId!)
         .pipe(takeUntil(this.destroy$))
-        .subscribe(details => {
+        .subscribe((details) => {
           this.currentGroupDetails = details;
         });
     }
@@ -412,7 +446,10 @@ loadHistory(): void {
         lastDate = msgDate;
       }
 
-      if (this.selectedContact?.unreadCount && this.selectedContact.unreadCount > 0) {
+      if (
+        this.selectedContact?.unreadCount &&
+        this.selectedContact.unreadCount > 0
+      ) {
         const unreadIndex = messages.length - this.selectedContact.unreadCount;
         if (index === unreadIndex) {
           this.firstUnreadMessageId = Number(msg.messageId);
@@ -432,7 +469,11 @@ loadHistory(): void {
     const oneDay = 24 * 60 * 60 * 1000;
 
     if (date.toDateString() === now.toDateString()) return 'Today';
-    if (diff < 2 * oneDay && date.toDateString() === new Date(now.getTime() - oneDay).toDateString()) return 'Yesterday';
+    if (
+      diff < 2 * oneDay &&
+      date.toDateString() === new Date(now.getTime() - oneDay).toDateString()
+    )
+      return 'Yesterday';
     return date.toLocaleDateString();
   }
 
@@ -446,7 +487,9 @@ loadHistory(): void {
 
       if (msgDate !== lastMsgDate) {
         messageWithDate.showDateDivider = true;
-        messageWithDate.dateLabel = this.formatDateDivider(message.createdAtUtc);
+        messageWithDate.dateLabel = this.formatDateDivider(
+          message.createdAtUtc
+        );
       }
     } else {
       messageWithDate.showDateDivider = true;
@@ -473,9 +516,17 @@ loadHistory(): void {
   }
 
   markLastMessageAsRead(): void {
-    if (this.messages.length > 0 && this.selectedContact && this.selectedContact.unreadCount && this.selectedContact.unreadCount > 0) {
+    if (
+      this.messages.length > 0 &&
+      this.selectedContact &&
+      this.selectedContact.unreadCount &&
+      this.selectedContact.unreadCount > 0
+    ) {
       const lastMessage = this.messages[this.messages.length - 1];
-      this.chatService.markConversationRead(this.conversationId!, Number(lastMessage.messageId));
+      this.chatService.markConversationRead(
+        this.conversationId!,
+        Number(lastMessage.messageId)
+      );
     }
   }
 
@@ -496,7 +547,10 @@ loadHistory(): void {
 
   scrollToNewMessages(): void {
     if (this.firstUnreadMessageId && this.messagesComp.messagesContainer) {
-      const targetElement = this.messagesComp.messagesContainer.nativeElement.querySelector(`[data-message-id="${this.firstUnreadMessageId}"]`);
+      const targetElement =
+        this.messagesComp.messagesContainer.nativeElement.querySelector(
+          `[data-message-id="${this.firstUnreadMessageId}"]`
+        );
       if (targetElement) {
         this.targetScrollPosition = targetElement.offsetTop - 50; // 50px offset for visibility
         this.shouldScrollToTarget = true;
@@ -518,7 +572,10 @@ loadHistory(): void {
 
   private scrollToMessage(messageId: number): void {
     if (this.messagesComp && this.messagesComp.messagesContainer) {
-      const targetElement = this.messagesComp.messagesContainer.nativeElement.querySelector(`[data-message-id="${messageId}"]`);
+      const targetElement =
+        this.messagesComp.messagesContainer.nativeElement.querySelector(
+          `[data-message-id="${messageId}"]`
+        );
       if (targetElement) {
         const targetPosition = targetElement.offsetTop - 50; // 50px offset for visibility
         this.scrollToPosition(targetPosition);
@@ -560,18 +617,31 @@ loadHistory(): void {
 
     this.isUploadingMedia = true;
 
-    this.chatService.uploadMedia(this.selectedMediaFile)
+    this.chatService
+      .uploadMedia(this.selectedMediaFile)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (response) => {
           const mediaUrl = response.url;
-          const mediaType = response.contentType.startsWith('image') ? 'image' : 'video';
+          const mediaType = response.contentType.startsWith('image')
+            ? 'image'
+            : 'video';
           const caption = this.mediaCaption;
 
           if (this.selectedContact?.isGroup) {
-            this.chatService.sendGroupMessage(this.conversationId!, caption || mediaUrl, mediaType, mediaUrl);
+            this.chatService.sendGroupMessage(
+              this.conversationId!,
+              caption || mediaUrl,
+              mediaType,
+              mediaUrl
+            );
           } else if (this.currentChatUserId) {
-            this.chatService.sendDirectMessage(this.currentChatUserId, caption || mediaUrl, mediaType, mediaUrl);
+            this.chatService.sendDirectMessage(
+              this.currentChatUserId,
+              caption || mediaUrl,
+              mediaType,
+              mediaUrl
+            );
           }
 
           this.cancelMediaUpload();
@@ -579,7 +649,7 @@ loadHistory(): void {
         error: (err) => {
           console.error('Media upload failed:', err);
           this.isUploadingMedia = false;
-        }
+        },
       });
   }
 
@@ -619,13 +689,17 @@ loadHistory(): void {
   createGroup(): void {
     if (!this.groupName || this.selectedFriendsForGroup.length === 0) return;
 
-    const memberUserIds = [this.currentUser!.userId, ...this.selectedFriendsForGroup];
+    const memberUserIds = [
+      this.currentUser!.userId,
+      ...this.selectedFriendsForGroup,
+    ];
     const request: CreateGroupRequest = {
       groupName: this.groupName,
-      memberUserIds: memberUserIds
+      memberUserIds: memberUserIds,
     };
 
-    this.chatService.createGroup(request)
+    this.chatService
+      .createGroup(request)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (response) => {
@@ -636,7 +710,7 @@ loadHistory(): void {
         },
         error: (err) => {
           console.error('Group creation failed:', err);
-        }
+        },
       });
   }
 
@@ -654,18 +728,23 @@ loadHistory(): void {
 
   isCurrentUserAdmin(): boolean {
     if (!this.currentGroupDetails || !this.currentUser) return false;
-    return !!this.currentGroupDetails.members.find(m => m.userId === this.currentUser!.userId && m.isAdmin);
+    return !!this.currentGroupDetails.members.find(
+      (m) => m.userId === this.currentUser!.userId && m.isAdmin
+    );
   }
 
   leaveGroup(): void {
     if (!this.conversationId) return;
 
     // Load up-to-date group details (we already have the API)
-    this.chatService.getGroupDetails(this.conversationId)
+    this.chatService
+      .getGroupDetails(this.conversationId)
       .pipe(takeUntil(this.destroy$))
-      .subscribe(details => {
+      .subscribe((details) => {
         const currentUserId = this.authService.getCurrentUser()?.userId!;
-        const currentUser = details.members.find(m => m.userId === currentUserId);
+        const currentUser = details.members.find(
+          (m) => m.userId === currentUserId
+        );
 
         if (!currentUser) {
           // Should not happen, but fallback to direct leave
@@ -688,7 +767,9 @@ loadHistory(): void {
     const currentUserId = this.authService.getCurrentUser()?.userId!;
 
     // Members who can be assigned new admin (everyone except current user)
-    this.transferableMembers = details.members.filter(m => m.userId !== currentUserId);
+    this.transferableMembers = details.members.filter(
+      (m) => m.userId !== currentUserId
+    );
 
     this.selectedNewAdminId = null;
     this.showTransferAdminModal = true;
@@ -706,7 +787,8 @@ loadHistory(): void {
   onConfirmTransferAdmin(): void {
     if (!this.selectedNewAdminId || !this.conversationId) return;
 
-    this.chatService.transferAdmin(this.conversationId, this.selectedNewAdminId)
+    this.chatService
+      .transferAdmin(this.conversationId, this.selectedNewAdminId)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: () => {
@@ -717,7 +799,7 @@ loadHistory(): void {
         },
         error: () => {
           // this.showError("Failed to assign new admin. Try again.");
-        }
+        },
       });
   }
 
@@ -729,9 +811,15 @@ loadHistory(): void {
 
   // performLeaveGroup extracted from your original code
   performLeaveGroup(): void {
-    if (!confirm(`Are you sure you want to leave the group "${this.currentGroupDetails?.groupName}"?`)) return;
+    if (
+      !confirm(
+        `Are you sure you want to leave the group "${this.currentGroupDetails?.groupName}"?`
+      )
+    )
+      return;
 
-    this.chatService.leaveGroup(this.conversationId!)
+    this.chatService
+      .leaveGroup(this.conversationId!)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: () => {
@@ -743,7 +831,7 @@ loadHistory(): void {
         error: (err) => {
           console.error('Failed to leave group:', err);
           // this.showError('Failed to leave group. Please try again.');
-        }
+        },
       });
   }
 
@@ -756,7 +844,8 @@ loadHistory(): void {
   removeMember(userId: string): void {
     if (!confirm('Are you sure you want to remove this member?')) return;
 
-    this.chatService.removeGroupMember(this.conversationId!, userId)
+    this.chatService
+      .removeGroupMember(this.conversationId!, userId)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: () => {
@@ -764,7 +853,7 @@ loadHistory(): void {
         },
         error: (err) => {
           console.error('Failed to remove member:', err);
-        }
+        },
       });
   }
 
@@ -772,8 +861,12 @@ loadHistory(): void {
   openAddMemberModal(): void {
     if (!this.currentGroupDetails) return;
 
-    const currentMemberIds = this.currentGroupDetails.members.map(m => m.userId);
-    this.availableFriendsToAdd = this.friendsList.filter(f => !currentMemberIds.includes(f.userId));
+    const currentMemberIds = this.currentGroupDetails.members.map(
+      (m) => m.userId
+    );
+    this.availableFriendsToAdd = this.friendsList.filter(
+      (f) => !currentMemberIds.includes(f.userId)
+    );
     this.selectedFriendToAdd = null;
     this.showAddMemberModal = true;
   }
@@ -785,7 +878,8 @@ loadHistory(): void {
   addMember(): void {
     if (!this.selectedFriendToAdd || !this.conversationId) return;
 
-    this.chatService.addGroupMember(this.conversationId, this.selectedFriendToAdd)
+    this.chatService
+      .addGroupMember(this.conversationId, this.selectedFriendToAdd)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: () => {
@@ -794,7 +888,7 @@ loadHistory(): void {
         },
         error: (err) => {
           console.error('Failed to add member:', err);
-        }
+        },
       });
   }
 
@@ -834,7 +928,10 @@ loadHistory(): void {
   }
 
   // In the onDeleteMessage method:
-  onDeleteMessage(event: { messageId: number; deleteForEveryone: boolean }): void {
+  onDeleteMessage(event: {
+    messageId: number;
+    deleteForEveryone: boolean;
+  }): void {
     this.chatService.deleteMessage(event.messageId, event.deleteForEveryone);
   }
 
@@ -846,11 +943,14 @@ loadHistory(): void {
   // In the onForwardMessage method:
   onForwardMessage(message: Message): void {
     // Load all contacts for forwarding
-    this.chatService.getContacts()
+    this.chatService
+      .getContacts()
       .pipe(takeUntil(this.destroy$))
-      .subscribe(contacts => {
+      .subscribe((contacts) => {
         // Exclude current conversation
-        this.forwardContacts = contacts.filter(c => c.conversationId !== this.conversationId);
+        this.forwardContacts = contacts.filter(
+          (c) => c.conversationId !== this.conversationId
+        );
         this.forwardMessage = message;
         this.showForwardModal = true;
       });
@@ -892,7 +992,8 @@ loadHistory(): void {
       return;
     }
 
-    this.chatService.deleteGroup(this.conversationId)
+    this.chatService
+      .deleteGroup(this.conversationId)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: () => {
@@ -902,16 +1003,18 @@ loadHistory(): void {
           this.showChat = false;
           this.conversationId = null;
           this.messages = [];
-          alert('Group deleted successfully.');
+        this.success('Group deleted successfully.');
         },
         error: (err) => {
           console.error('Failed to delete group:', err);
-          const errorMsg = err.error?.error || 'Failed to delete group. You may not have permission.';
+          const errorMsg =
+            err.error?.error ||
+            'Failed to delete group. You may not have permission.';
           alert(errorMsg);
-        }
+        },
       });
   }
-   openSearchModal(): void {
+  openSearchModal(): void {
     this.showSearchModal = true;
   }
 
@@ -919,130 +1022,167 @@ loadHistory(): void {
     this.showSearchModal = false;
   }
 
-async onMessageSelectedFromSearch(result: SearchResultDto): Promise<void> {
-  console.log('Search result selected:', result);
-  
-  // Get contacts from sidebar component
-  let targetContact = this.findContactByConversationId(result.conversationId);
-  
-  // If contact not found, reload contacts and try again
-  if (!targetContact) {
-    console.log('Contact not found in current list, reloading contacts...');
-    await this.loadContactByConversationId(result.conversationId);
-    targetContact = this.findContactByConversationId(result.conversationId);
-  }
+  async onMessageSelectedFromSearch(result: SearchResultDto): Promise<void> {
+    console.log('Search result selected:', result);
 
-  if (!targetContact) {
-    console.error('Could not find or load contact');
-    return;
-  }
+    // Get contacts from sidebar component
+    let targetContact = this.findContactByConversationId(result.conversationId);
 
-  // Set the target message ID before opening chat
-  this.searchTargetMessageId = result.messageId;
+    // If contact not found, reload contacts and try again
+    if (!targetContact) {
+      console.log('Contact not found in current list, reloading contacts...');
+      await this.loadContactByConversationId(result.conversationId);
+      targetContact = this.findContactByConversationId(result.conversationId);
+    }
 
-  // Close search modal
-  this.closeSearchModal();
-
-  // Open the chat
-  this.openChat(targetContact);
-
-  // Wait for messages to load, then scroll to target
-  // Use a longer delay and retry mechanism
-  this.waitForMessagesAndScroll(result.messageId);
-}
-
-private waitForMessagesAndScroll(messageId: number, attempt: number = 0): void {
-  const maxAttempts = 15; // Increased attempts
-  const delay = 300; // Slightly longer delay
-
-  if (attempt >= maxAttempts) {
-    console.error('Could not find message after', maxAttempts, 'attempts');
-    console.log('Available messages:', this.messages.map(m => m.messageId));
-    this.searchTargetMessageId = null; // Clear target on failure
-    return;
-  }
-
-  setTimeout(() => {
-    // Check if messages are loaded
-    if (this.messages.length === 0) {
-      console.log('Messages not loaded yet, retrying...', attempt + 1);
-      this.waitForMessagesAndScroll(messageId, attempt + 1);
+    if (!targetContact) {
+      console.error('Could not find or load contact');
       return;
     }
 
-    // Check if target message exists in messages array
-    const messageFound = this.messages.find(m => Number(m.messageId) === messageId);
-    
-    if (messageFound) {
-      console.log('Message found in array, attempting scroll. MessageId:', messageId);
-      
-      // Force change detection to ensure DOM is updated
-      this.cdr.detectChanges();
-      
-      // Give DOM time to render after change detection
-      setTimeout(() => {
-        this.scrollToMessage(messageId);
-        // Clear the target after successful scroll
-        setTimeout(() => {
-          this.searchTargetMessageId = null;
-        }, 3000);
-      }, 100);
-    } else {
-      console.log('Message not in array yet, retrying...', attempt + 1, 'MessageId:', messageId);
-      console.log('Current message IDs:', this.messages.map(m => m.messageId));
-      this.waitForMessagesAndScroll(messageId, attempt + 1);
-    }
-  }, delay);
-}
+    // Set the target message ID before opening chat
+    this.searchTargetMessageId = result.messageId;
 
-// 4. Implement the findContactByConversationId method:
-private findContactByConversationId(conversationId: string): Contact | null {
-  // Access contacts from sidebar component
-  if (!this.sidebarComp || !this.sidebarComp.contacts) {
-    console.error('Sidebar component or contacts not available');
-    return null;
+    // Close search modal
+    this.closeSearchModal();
+
+    // Open the chat
+    this.openChat(targetContact);
+
+    // Wait for messages to load, then scroll to target
+    // Use a longer delay and retry mechanism
+    this.waitForMessagesAndScroll(result.messageId);
   }
-  
-  const contact = this.sidebarComp.contacts.find(c => c.conversationId === conversationId);
-  return contact || null;
-}
 
-// 5. Implement the loadContactByConversationId method:
-private async loadContactByConversationId(conversationId: string): Promise<void> {
-  return new Promise((resolve) => {
-    // Tell sidebar to reload its contacts
-    if (this.sidebarComp) {
-      this.sidebarComp.loadContacts();
-      
-      // Wait a bit for the contacts to load
-      setTimeout(() => {
-        resolve();
-      }, 300);
-    } else {
-      resolve();
+  private waitForMessagesAndScroll(
+    messageId: number,
+    attempt: number = 0
+  ): void {
+    const maxAttempts = 15; // Increased attempts
+    const delay = 300; // Slightly longer delay
+
+    if (attempt >= maxAttempts) {
+      console.error('Could not find message after', maxAttempts, 'attempts');
+      console.log(
+        'Available messages:',
+        this.messages.map((m) => m.messageId)
+      );
+      this.searchTargetMessageId = null; // Clear target on failure
+      return;
     }
+
+    setTimeout(() => {
+      // Check if messages are loaded
+      if (this.messages.length === 0) {
+        console.log('Messages not loaded yet, retrying...', attempt + 1);
+        this.waitForMessagesAndScroll(messageId, attempt + 1);
+        return;
+      }
+
+      // Check if target message exists in messages array
+      const messageFound = this.messages.find(
+        (m) => Number(m.messageId) === messageId
+      );
+
+      if (messageFound) {
+        console.log(
+          'Message found in array, attempting scroll. MessageId:',
+          messageId
+        );
+
+        // Force change detection to ensure DOM is updated
+        this.cdr.detectChanges();
+
+        // Give DOM time to render after change detection
+        setTimeout(() => {
+          this.scrollToMessage(messageId);
+          // Clear the target after successful scroll
+          setTimeout(() => {
+            this.searchTargetMessageId = null;
+          }, 3000);
+        }, 100);
+      } else {
+        console.log(
+          'Message not in array yet, retrying...',
+          attempt + 1,
+          'MessageId:',
+          messageId
+        );
+        console.log(
+          'Current message IDs:',
+          this.messages.map((m) => m.messageId)
+        );
+        this.waitForMessagesAndScroll(messageId, attempt + 1);
+      }
+    }, delay);
+  }
+
+  // 4. Implement the findContactByConversationId method:
+  private findContactByConversationId(conversationId: string): Contact | null {
+    // Access contacts from sidebar component
+    if (!this.sidebarComp || !this.sidebarComp.contacts) {
+      console.error('Sidebar component or contacts not available');
+      return null;
+    }
+
+    const contact = this.sidebarComp.contacts.find(
+      (c) => c.conversationId === conversationId
+    );
+    return contact || null;
+  }
+
+  // 5. Implement the loadContactByConversationId method:
+  private async loadContactByConversationId(
+    conversationId: string
+  ): Promise<void> {
+    return new Promise((resolve) => {
+      // Tell sidebar to reload its contacts
+      if (this.sidebarComp) {
+        this.sidebarComp.loadContacts();
+
+        // Wait a bit for the contacts to load
+        setTimeout(() => {
+          resolve();
+        }, 300);
+      } else {
+        resolve();
+      }
+    });
+  }
+
+  // 6. Update the getContactsForSearch method to actually return contacts:
+  getContactsForSearch(): Contact[] {
+    // Get contacts from sidebar component
+    if (this.sidebarComp && this.sidebarComp.contacts) {
+      return this.sidebarComp.contacts;
+    }
+    return [];
+  }
+  success(msg: string) {
+  Swal.fire({
+    icon: 'success',
+    title: 'Success',
+    text: msg,
+    timer: 2000,
+    showConfirmButton: false
   });
 }
 
-// 6. Update the getContactsForSearch method to actually return contacts:
-getContactsForSearch(): Contact[] {
-  // Get contacts from sidebar component
-  if (this.sidebarComp && this.sidebarComp.contacts) {
-    return this.sidebarComp.contacts;
-  }
-  return [];
-}
 
   updateGroupInfo(): void {
     if (!this.conversationId || !this.editGroupName) return;
 
-    const updateName$ = this.chatService.updateGroupInfo(this.conversationId, this.editGroupName);
+    const updateName$ = this.chatService.updateGroupInfo(
+      this.conversationId,
+      this.editGroupName
+    );
     let uploadPhoto$: Subject<any> | null = null;
 
     if (this.selectedGroupPhotoFile) {
       this.isUploadingGroupPhoto = true;
       uploadPhoto$ = new Subject<any>();
-      this.chatService.uploadGroupPhoto(this.conversationId, this.selectedGroupPhotoFile)
+      this.chatService
+        .uploadGroupPhoto(this.conversationId, this.selectedGroupPhotoFile)
         .subscribe({
           next: (res) => {
             uploadPhoto$!.next(res);
@@ -1050,7 +1190,7 @@ getContactsForSearch(): Contact[] {
           },
           error: (err) => {
             uploadPhoto$!.error(err);
-          }
+          },
         });
     }
 
@@ -1063,7 +1203,7 @@ getContactsForSearch(): Contact[] {
       error: (err) => {
         console.error('Failed to update group name:', err);
         this.isUploadingGroupPhoto = false;
-      }
+      },
     });
 
     if (uploadPhoto$) {
@@ -1074,11 +1214,10 @@ getContactsForSearch(): Contact[] {
         error: (err) => {
           console.error('Failed to upload group photo:', err);
           this.isUploadingGroupPhoto = false;
-        }
+        },
       });
     }
   }
-  
 
   private handleGroupUpdateSuccess(): void {
     this.isUploadingGroupPhoto = false;

@@ -1,67 +1,92 @@
 .main-layout {
   display: flex;
   height: 100vh;
-  background: #f8fafc;
+  background: #f3f2f1;
   position: relative;
   color: #1e293b;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
 }
 
 .sidebar-nav {
-  width: 280px;
+  width: 68px;
   display: flex;
   flex-direction: column;
-  background: #ffffff;
-  border-right: 1px solid #e2e8f0;
+   /* background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); */
+   background: #030819;  
+   border-right: 1px solid #3d3d3d;
   transition: transform 0.3s ease-in-out;
   z-index: 100;
 }
 
 .nav-header {
-  padding: 24px 20px;
-  border-bottom: 1px solid #e2e8f0;
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  padding: 16px 0;
+  border-bottom: none;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
 }
 
 .nav-header h2 {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: white;
-  margin-bottom: 20px;
-  letter-spacing: -0.5px;
+  display: none;
 }
 
 .user-info {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 0;
   transition: all 0.2s;
-  padding: 10px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
+  padding: 6px;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  position: relative;
 }
 
 .user-info:hover {
-  background: rgba(255, 255, 255, 0.15);
-  transform: translateX(2px);
+  background: #3d3d3d;
+}
+
+.user-info::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 0;
+  background: #6264a7;
+  transition: height 0.2s;
+  border-radius: 0 2px 2px 0;
+}
+
+.user-info:hover::before {
+  height: 32px;
 }
 
 .user-avatar {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #60a5fa, #3b82f6);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #6264a7;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 700;
-  font-size: 1.1rem;
+  font-weight: 600;
+  font-size: 0.9rem;
   color: white;
   flex-shrink: 0;
   overflow: hidden;
   position: relative;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border: 2px solid transparent;
+  transition: border-color 0.2s;
+}
+
+.user-info:hover .user-avatar {
+  border-color: #6264a7;
 }
 
 .avatar-image {
@@ -75,106 +100,128 @@
 }
 
 .user-details {
-  flex: 1;
-  min-width: 0;
-}
-
-.user-name {
-  font-weight: 600;
-  font-size: 0.95rem;
-  color: white;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.user-status {
-  font-size: 0.8rem;
-  color: #bfdbfe;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 2px;
+  display: none;
 }
 
 .nav-menu {
   flex: 1;
-  padding: 12px 0;
+  padding: 8px 0;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .nav-item {
-  width: 100%;
-  padding: 14px 20px;
+  width: 52px;
+  height: 52px;
+  padding: 0;
   border: none;
   background: none;
-  color: #64748b;
+  color: #b3b3b3;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 12px;
-  font-size: 0.95rem;
+  justify-content: center;
+  gap: 4px;
+  font-size: 1.3rem;
   font-weight: 500;
   cursor: pointer;
-  text-align: left;
+  text-align: center;
   transition: all 0.2s ease;
   border-left: 3px solid transparent;
-  margin: 2px 0;
+  margin: 4px 0;
+  border-radius: 8px;
+  position: relative;
+}
+
+.nav-item::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 0;
+  background: #6264a7;
+  transition: height 0.2s;
+  border-radius: 0 2px 2px 0;
 }
 
 .nav-item:hover {
-  background: #f8fafc;
-  color: #1e293b;
+  background: #3d3d3d;
+  color: #ffffff;
+}
+
+.nav-item:hover::before {
+  height: 32px;
 }
 
 .nav-item.active {
-  color: #3b82f6;
-  border-left-color: #3b82f6;
-  background: #eff6ff;
+  color: #ffffff;
+  border-left-color: transparent;
+  /* background: #0d246f; */
+  background: rgb(79, 135, 231);
   font-weight: 600;
+}
+
+.nav-item.active::before {
+  height: 32px;
 }
 
 .nav-item span {
-  font-size: 0.95rem;
+  font-size: 0.65rem;
+  font-weight: 500;
+  letter-spacing: 0.3px;
 }
 
 .nav-footer {
-  padding: 16px 20px;
-  border-top: 1px solid #e2e8f0;
+  padding: 12px 0;
+  border-top: none;
+  display: flex;
+  justify-content: center;
 }
 
 .logout-btn {
-  width: 100%;
-  background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  color: #ef4444;
-  font-size: 0.9rem;
+  width: 52px;
+  height: 52px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: #b3b3b3;
+  font-size: 1.3rem;
   font-weight: 600;
-  padding: 12px;
+  padding: 0;
   cursor: pointer;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 4px;
   transition: all 0.2s ease;
+  position: relative;
+}
+
+.logout-btn::after {
+  /* content: "Logout"; */
+  font-size: 0.65rem;
+  font-weight: 500;
+  letter-spacing: 0.3px;
 }
 
 .logout-btn:hover {
-  background: #fef2f2;
-  border-color: #fecaca;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.1);
+  background: #3d3d3d;
+  color: #ffffff;
 }
 
 .logout-btn::before {
-  content: '→';
-  font-size: 1.1rem;
+  /* content: "🚪"; */
+  font-size: 1.3rem;
 }
 
 .main-content {
   flex: 1;
-  background: #f8fafc;
+  background: #f3f2f1;
   overflow: hidden;
   position: relative;
 }
@@ -243,26 +290,33 @@
   .mobile-header {
     display: flex;
   }
-  
+
   .sidebar-nav {
     position: fixed;
-    left: -280px;
+    left: -68px;
     top: 0;
     bottom: 0;
-    box-shadow: 4px 0 12px rgba(0, 0, 0, 0.15);
+    box-shadow: 4px 0 12px rgba(0, 0, 0, 0.3);
   }
-  
+
   .sidebar-nav.mobile-open {
-    transform: translateX(280px);
+    transform: translateX(68px);
   }
-  
+
   .main-content {
     margin-top: 64px;
   }
-  
+
   .mobile-overlay {
     display: block;
   }
+}
+
+.nav-icon {
+  width: 1.6rem;
+  height: 1.6rem;
+  /* margin-right: 8px; */
+  vertical-align: middle;
 }
 
 /* Scrollbar Styling */
@@ -275,10 +329,10 @@
 }
 
 .nav-menu::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: #4d4d4d;
   border-radius: 10px;
 }
 
 .nav-menu::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #5d5d5d;
 }

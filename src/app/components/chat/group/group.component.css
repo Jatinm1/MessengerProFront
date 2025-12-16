@@ -1,12 +1,14 @@
 /* Chat Header */
 .chat-header {
-  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+  /* background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); */
+  background:  #2a74f5ff;
   color: white;
   padding: 14px 24px;
   box-shadow: 0 2px 12px rgba(13, 148, 136, 0.2);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  height: 70px;
 }
 
 .header-left {

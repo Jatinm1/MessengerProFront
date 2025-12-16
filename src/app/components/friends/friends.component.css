@@ -135,7 +135,8 @@
 
 .search-btn {
   padding: 12px 28px;
-  background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
+  /* background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%); */
+  background:  #2a74f5ff;
   color: white;
   border: none;
   border-radius: 12px;
@@ -225,7 +226,8 @@
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
+  /* background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%); */
+background:  #2a74f5ff;
   color: white;
   display: flex;
   align-items: center;
@@ -436,8 +438,8 @@
 }
 
 .sub-tab-btn.active {
-  color: #3b82f6;
-  border-bottom-color: #3b82f6;
+  color:  #2a74f5ff;
+  border-bottom-color:  #2a74f5ff;
 }
 
 .empty-state {

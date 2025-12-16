@@ -16,10 +16,10 @@ import { ChatService } from '../../../services/chat.service';
           <span>Logged in as: {{ currentUser?.displayName }}</span>
           <div class="header-actions">
             <button class="search-btn" (click)="searchClicked.emit()" title="Search Messages">
-              🔍
+              <img src="/images/search.png" alt="Search" class="search-icon" />
             </button>
             <button class="create-group-btn" (click)="createGroupClicked.emit()" title="Create Group">
-              ➕ Group
+            New Group
             </button>
           </div>
         </div>
@@ -64,9 +64,10 @@ import { ChatService } from '../../../services/chat.service';
 }
 
 .sidebar-header {
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  background:  #2a74f5ff;
   color: white;
-  padding: 20px;
+  height: 70px;
+  padding: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
@@ -102,6 +103,11 @@ import { ChatService } from '../../../services/chat.service';
 .search-btn {
   font-size: 1.1rem;
   padding: 8px 12px;
+}
+  .search-icon {
+  width: 1.6rem;
+  height: 1.6rem;
+  vertical-align: middle;
 }
 
 .search-btn:hover,
@@ -166,7 +172,8 @@ import { ChatService } from '../../../services/chat.service';
   width: 52px;
   height: 52px;
   border-radius: 14px;
-  background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+  /* background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);*/
+  background: #2a74f5ff;
   color: white;
   display: flex;
   align-items: center;

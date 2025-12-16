@@ -8,14 +8,19 @@
   <aside class="sidebar-nav" [class.mobile-open]="mobileMenuOpen">
     <div class="nav-header">
       <h2>ChatApp</h2>
-      <div class="user-info" (click)="navigateTo('/profile')" style="cursor: pointer;">
+      <div
+        class="user-info"
+        (click)="navigateTo('/profile')"
+        style="cursor: pointer"
+      >
         <div class="user-avatar">
-          <img 
-            *ngIf="currentUser.profilePhotoUrl" 
-            [src]="currentUser.profilePhotoUrl" 
+          <img
+            *ngIf="currentUser.profilePhotoUrl"
+            [src]="currentUser.profilePhotoUrl"
             [alt]="currentUser.displayName"
             class="avatar-image"
-            (error)="onImageError($event)">
+            (error)="onImageError($event)"
+          />
           <span *ngIf="!currentUser.profilePhotoUrl" class="avatar-initials">
             {{ getInitials(currentUser.displayName) }}
           </span>
@@ -28,32 +33,30 @@
     </div>
 
     <nav class="nav-menu">
-      <button 
+      <button
         class="nav-item"
         [class.active]="isActive('/chat')"
-        (click)="navigateTo('/chat')">
-        💬 <span>Chats</span>
+        (click)="navigateTo('/chat')"
+      >
+        <img src="/images/Chat.png" alt="Chats" class="nav-icon" />
+        <span>Chats</span>
       </button>
 
-      <button 
+      <button
         class="nav-item"
         [class.active]="isActive('/friends')"
-        (click)="navigateTo('/friends')">
-        👥 <span>Friends</span>
-      </button>
-
-      <button 
-        class="nav-item"
-        [class.active]="isActive('/profile')"
-        (click)="navigateTo('/profile')">
-        👤 <span>Profile</span>
-      </button>
+        (click)="navigateTo('/friends')"
+      >
+        <img src="/images/Friends.png" alt="Friends" class="nav-icon" />
+        <span>Friends</span>
+      </button>     
     </nav>
 
     <div class="nav-footer">
       <button class="logout-btn" (click)="logout()">
-        Logout
+        <img src="/images/logout.png" alt="Chats" class="nav-icon" />
       </button>
+      
     </div>
   </aside>
 
@@ -61,7 +64,9 @@
     <router-outlet></router-outlet>
   </div>
 
-  <div class="mobile-overlay" 
-       [class.active]="mobileMenuOpen"
-       (click)="closeMobileMenu()"></div>
+  <div
+    class="mobile-overlay"
+    [class.active]="mobileMenuOpen"
+    (click)="closeMobileMenu()"
+  ></div>
 </div>
