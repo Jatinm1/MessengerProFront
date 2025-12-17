@@ -17,7 +17,7 @@ import { environment } from '../../env/env';
 })
 export class ChatService {
   private apiBase: string = environment.apiUrl;
-  private hubConnection?: signalR.HubConnection;
+  public hubConnection?: signalR.HubConnection;
   
   // Connection state
   private connectionState$ = new BehaviorSubject<signalR.HubConnectionState>(

@@ -1,23 +1,25 @@
 <!-- Updated chat.component.html -->
 <div class="app">
   <!-- Sidebar -->
-<app-sidebar
-  #sidebarComp
-  [currentUser]="currentUser"
-  [selectedContact]="selectedContact"
-  (contactSelected)="openChat($event)"
-  (createGroupClicked)="openCreateGroupModal()"
-  (searchClicked)="openSearchModal()">
-</app-sidebar>
+  <app-sidebar
+    #sidebarComp
+    [currentUser]="currentUser"
+    [selectedContact]="selectedContact"
+    (contactSelected)="openChat($event)"
+    (createGroupClicked)="openCreateGroupModal()"
+    (searchClicked)="openSearchModal()">
+  </app-sidebar>
 
   <!-- Chat panel -->
   <div class="chat-container">
-    <app-group
+        <app-group
       [selectedContact]="selectedContact"
       (openGroupDetails)="openGroupDetails()"
-    ></app-group>
+      (audioCallClicked)="initiateAudioCall()"
+      (videoCallClicked)="initiateVideoCall()">
+    </app-group>
 
-    <app-messages
+   <app-messages
       #messagesComp
       [messages]="messages"
       [selectedContact]="selectedContact"
@@ -36,12 +38,12 @@
       (scrollToNewMessages)="scrollToNewMessages()"
       (deleteMessageEvent)="onDeleteMessage($event)"
       (editMessageEvent)="onEditMessage($event)"
-      (forwardMessageEvent)="onForwardMessage($event)"
-    ></app-messages>
+      (forwardMessageEvent)="onForwardMessage($event)">
+    </app-messages>
   </div>
 
   <!-- Modals -->
-  <app-modals
+   <app-modals
     [showMediaModal]="showMediaModal"
     [mediaPreview]="mediaPreview"
     [(mediaCaption)]="mediaCaption"
@@ -52,7 +54,6 @@
     (cancelMediaUpload)="cancelMediaUpload()"
     (sendMediaMessage)="sendMediaMessage()"
     (closeMediaViewer)="closeMediaViewer()"
-
     [showCreateGroupModal]="showCreateGroupModal"
     [(groupName)]="groupName"
     [selectedFriendsForGroup]="selectedFriendsForGroup"
@@ -60,7 +61,6 @@
     (closeCreateGroupModal)="closeCreateGroupModal()"
     (toggleFriendSelection)="toggleFriendSelection($event)"
     (createGroup)="createGroup()"
-
     [showGroupDetailsModal]="showGroupDetailsModal"
     [currentGroupDetails]="currentGroupDetails"
     [isCurrentUserAdmin]="isCurrentUserAdmin()"
@@ -70,13 +70,11 @@
     (openEditGroupModal)="openEditGroupModal()"
     (leaveGroup)="leaveGroup()"
     (removeMember)="removeMember($event)"
-
     [showAddMemberModal]="showAddMemberModal"
     [availableFriendsToAdd]="availableFriendsToAdd"
     [(selectedFriendToAdd)]="selectedFriendToAdd"
     (closeAddMemberModal)="closeAddMemberModal()"
     (addMember)="addMember()"
-
     [showEditGroupModal]="showEditGroupModal"
     [(editGroupName)]="editGroupName"
     [groupPhotoPreview]="groupPhotoPreview"
@@ -84,34 +82,58 @@
     (closeEditGroupModal)="closeEditGroupModal()"
     (groupPhotoSelected)="onGroupPhotoSelected($event)"
     (updateGroupInfo)="updateGroupInfo()"
-    
     [showTransferAdminModal]="showTransferAdminModal"
     [transferableMembers]="transferableMembers"
     [selectedNewAdminId]="selectedNewAdminId"
     (selectNewAdmin)="onSelectNewAdmin($event)"
     (confirmTransferAdmin)="onConfirmTransferAdmin()"
     (cancelTransferAdmin)="onCancelTransferAdmin()"
-
     [showDeleteGroupModal]="showDeleteGroupModal"
     [(deleteConfirmationText)]="deleteConfirmationText"
     (openDeleteGroupModal)="openDeleteGroupModal()"
     (closeDeleteGroupModal)="closeDeleteGroupModal()"
     (deleteGroup)="deleteGroup()"
-    
     [showForwardModal]="showForwardModal"
     [forwardMessage]="forwardMessage"
     [forwardContacts]="forwardContacts"
     (closeForwardModal)="closeForwardModal()"
-    (forwardMessageTo)="forwardMessageTo($event)"
-  ></app-modals>
+    (forwardMessageTo)="forwardMessageTo($event)">
+  </app-modals>
 
   <!-- Search Modal -->
 <app-search-modal
-  *ngIf="showSearchModal"
-  [contacts]="getContactsForSearch()"
-  (closeModal)="closeSearchModal()"
-  (messageSelected)="onMessageSelectedFromSearch($event)">
-</app-search-modal>
+    *ngIf="showSearchModal"
+    [contacts]="getContactsForSearch()"
+    (closeModal)="closeSearchModal()"
+    (messageSelected)="onMessageSelectedFromSearch($event)">
+  </app-search-modal>
+
+   <app-incoming-call
+    *ngIf="showIncomingCall && incomingCallOffer"
+    [callOffer]="incomingCallOffer"
+    (accept)="acceptIncomingCall()"
+    (reject)="rejectIncomingCall()">
+  </app-incoming-call>
+
+  <!-- Outgoing Call UI -->
+  <app-outgoing-call
+    *ngIf="showOutgoingCall && currentCall && remoteCallParticipant"
+    [callSession]="currentCall"
+    [recipient]="remoteCallParticipant"
+    (cancelCall)="cancelOutgoingCall()">
+  </app-outgoing-call>
+
+  <!-- Active Call UI -->
+  <app-active-call
+    *ngIf="showActiveCall && currentCall && remoteCallParticipant && localCallParticipant"
+    [callSession]="currentCall"
+    [remoteParticipant]="remoteCallParticipant"
+    [localParticipant]="localCallParticipant"
+    (endCall)="endActiveCall()"
+    (toggleAudio)="toggleCallAudio()"
+    (toggleVideo)="toggleCallVideo()"
+    (toggleScreenShare)="toggleCallScreenShare()">
+  </app-active-call>
 
 
 </div>

@@ -28,6 +28,17 @@ import { ModalsComponent } from './modals/modals.component';
 import { SidebarComponent } from './sidebar/sidebar.component';
 import { SearchModalComponent } from './modals/search-modal/search-modal.component';
 import Swal from 'sweetalert2';
+import { CallService } from '../../services/call.service';
+import { WebRTCService } from '../../services/webrtc.service';
+import { CallSession, CallOffer, CallParticipant, CallType } from '../../models/call.models';
+import { ActiveCallComponent } from '../call/active-call/active-call.component';
+import { IncomingCallComponent } from '../call/incoming-call/incoming-call.component';
+import { OutgoingCallComponent } from '../call/outgoing-call/outgoing-call.component';
+// import { ActiveCallComponent } from '../call/active-call/active-call.component';
+// import { IncomingCallComponent } from '../call/incoming-call/incoming-call.component';
+// import { OutgoingCallComponent } from '../call/outgoing-call/outgoing-call.component';
+
+
 
 interface MessageWithDate extends Message {
   dateLabel?: string;
@@ -45,6 +56,9 @@ interface MessageWithDate extends Message {
     MessagesComponent,
     ModalsComponent,
     SearchModalComponent,
+    IncomingCallComponent,
+    OutgoingCallComponent,
+    ActiveCallComponent
   ],
   templateUrl: './chat.component.html',
   styleUrls: ['./chat.component.css'],
@@ -60,6 +74,14 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
   private targetScrollPosition = 0;
   private userScrolledUp = false;
   private listenersSetup = false;
+
+  currentCall: CallSession | null = null;
+  incomingCallOffer: CallOffer | null = null;
+  showIncomingCall = false;
+  showOutgoingCall = false;
+  showActiveCall = false;
+  localCallParticipant: CallParticipant | null = null;
+  remoteCallParticipant: CallParticipant | null = null;
   showSearchModal = false;
   searchTargetMessageId: number | null = null;
 
@@ -129,7 +151,9 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     private authService: AuthService,
     private chatService: ChatService,
     private router: Router,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    private callService: CallService,
+    private webrtcService: WebRTCService
   ) {}
 
   @HostListener('document:click', ['$event'])
@@ -161,6 +185,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
 
       this.loadFriendsForGroup();
       this.setupSignalRListeners();
+      this.setupCallListeners();      
 
       const navigation = this.router.getCurrentNavigation();
       const state = navigation?.extras?.state || window.history.state;
@@ -301,7 +326,294 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     this.destroy$.next();
     this.destroy$.complete();
     this.chatService.disconnectFromHub();
+    if (this.currentCall) {
+      this.callService.endCall("declined", "User left chat");
+    }
   }
+
+ // Replace your setupCallListeners method with this:
+// Replace your setupCallListeners method with this:
+private setupCallListeners(): void {
+  // Listen for incoming calls
+  this.callService.incomingCall$
+    .pipe(takeUntil(this.destroy$))
+    .subscribe((offer) => {
+      console.log('📞 Incoming call received in component:', offer);
+      this.incomingCallOffer = offer;
+      this.remoteCallParticipant = offer.from;
+      this.localCallParticipant = this.createLocalParticipant();
+      this.showIncomingCall = true;
+      
+      // Hide other call UIs
+      this.showOutgoingCall = false;
+      this.showActiveCall = false;
+      
+      this.cdr.detectChanges();
+    });
+
+  // Listen for current call changes
+  this.callService.currentCall$
+    .pipe(takeUntil(this.destroy$))
+    .subscribe((call) => {
+      console.log('🔄 Call state changed:', call);
+      this.currentCall = call;
+      
+      if (call) {
+        // Determine which UI to show based on status
+        switch (call.status) {
+          case 'ringing':
+            if (call.initiatorId === this.currentUser?.userId) {
+              // Outgoing call - I initiated
+              this.showOutgoingCall = true;
+              this.showIncomingCall = false;
+              this.showActiveCall = false;
+            } else {
+              // Incoming call - showing in incomingCall$ handler
+              this.showIncomingCall = true;
+              this.showOutgoingCall = false;
+              this.showActiveCall = false;
+            }
+            break;
+            
+          case 'connecting':
+            // Show connecting state
+            console.log('⏳ Call connecting...');
+            // Keep current UI showing
+            break;
+            
+          case 'connected':
+            // Show active call UI
+            console.log('✅ Call connected, showing active call UI');
+            this.showIncomingCall = false;
+            this.showOutgoingCall = false;
+            this.showActiveCall = true;
+            break;
+            
+          case 'ended':
+          case 'declined':
+          case 'missed':
+          case 'busy':
+            // Hide all call UIs
+            this.showIncomingCall = false;
+            this.showOutgoingCall = false;
+            this.showActiveCall = false;
+            break;
+        }
+      } else {
+        // No call - hide all UIs
+        this.showIncomingCall = false;
+        this.showOutgoingCall = false;
+        this.showActiveCall = false;
+      }
+      
+      this.cdr.detectChanges();
+    });
+
+  // Listen for call ended
+  this.callService.callEnded$
+    .pipe(takeUntil(this.destroy$))
+    .subscribe((data) => {
+      console.log('📴 Call ended:', data);
+      
+      this.showIncomingCall = false;
+      this.showOutgoingCall = false;
+      this.showActiveCall = false;
+      this.currentCall = null;
+      this.incomingCallOffer = null;
+      this.remoteCallParticipant = null;
+      
+      // Show notification based on reason
+      if (data.reason.reason === 'declined') {
+        this.showNotification('Call declined', 'info');
+      } else if (data.reason.reason === 'missed') {
+        this.showNotification('Call was not answered', 'warning');
+      } else if (data.reason.reason === 'busy') {
+        this.showNotification('User is busy', 'warning');
+      }
+      
+      this.cdr.detectChanges();
+    });
+
+  // Listen for remote state updates (mute, video, etc.)
+  this.callService.remoteStateUpdate$
+    .pipe(takeUntil(this.destroy$))
+    .subscribe((state) => {
+      console.log('🔄 Remote state update:', state);
+      // The active-call component will handle this
+      this.cdr.detectChanges();
+    });
+}
+
+  // Initiate audio call
+ async initiateAudioCall(): Promise<void> {
+  if (!this.selectedContact || !this.currentUser) {
+    console.error('❌ No contact selected or no current user');
+    return;
+  }
+  
+  console.log('📞 Initiating audio call to:', this.selectedContact.displayName);
+  
+  try {
+    // Set participants BEFORE initiating call
+    this.localCallParticipant = this.createLocalParticipant();
+    this.remoteCallParticipant = this.createRemoteParticipant();
+    
+    await this.callService.initiateCall(
+      this.selectedContact.userId!,
+      this.conversationId!,
+      'audio',
+      this.remoteCallParticipant,
+      this.localCallParticipant // Pass local participant too
+    );
+    
+    // The UI will be updated by currentCall$ subscription
+    
+  } catch (error) {
+    console.error('❌ Error initiating audio call:', error);
+    this.showNotification('Failed to initiate call', 'error');
+  }
+}
+
+  // Initiate video call
+ async initiateVideoCall(): Promise<void> {
+  if (!this.selectedContact || !this.currentUser) {
+    console.error('❌ No contact selected or no current user');
+    return;
+  }
+  
+  console.log('📹 Initiating video call to:', this.selectedContact.displayName);
+  
+  try {
+    // Set participants BEFORE initiating call
+    this.localCallParticipant = this.createLocalParticipant();
+    this.remoteCallParticipant = this.createRemoteParticipant();
+    
+    await this.callService.initiateCall(
+      this.selectedContact.userId!,
+      this.conversationId!,
+      'video',
+      this.remoteCallParticipant,
+      this.localCallParticipant // Pass local participant too
+    );
+    
+    // The UI will be updated by currentCall$ subscription
+    
+  } catch (error) {
+    console.error('❌ Error initiating video call:', error);
+    this.showNotification('Failed to initiate call', 'error');
+  }
+}
+
+  // Accept incoming call
+  // Replace your acceptIncomingCall method with this:
+async acceptIncomingCall(): Promise<void> {
+  if (!this.incomingCallOffer) {
+    console.error('❌ No incoming call offer to accept');
+    return;
+  }
+  
+  console.log('✅ Accepting incoming call:', this.incomingCallOffer.callId);
+  
+  try {
+    // Accept the call
+    await this.callService.acceptCall(this.incomingCallOffer);
+    
+    // The UI will be updated by the currentCall$ subscription
+    // when the call status changes to 'connected'
+    
+  } catch (error) {
+    console.error('❌ Error accepting call:', error);
+    this.showNotification('Failed to accept call', 'error');
+    
+    // Clean up on error
+    this.showIncomingCall = false;
+    this.incomingCallOffer = null;
+    this.cdr.detectChanges();
+  }
+}
+
+  // Reject incoming call
+  async rejectIncomingCall(): Promise<void> {
+    if (!this.incomingCallOffer) return;
+    
+    try {
+      await this.callService.rejectCall(this.incomingCallOffer.callId);
+      this.showIncomingCall = false;
+      this.incomingCallOffer = null;
+    } catch (error) {
+      console.error('Error rejecting call:', error);
+    }
+  }
+
+  // Cancel outgoing call
+  async cancelOutgoingCall(): Promise<void> {
+    try {
+      await this.callService.endCall('normal', 'Call cancelled');
+    } catch (error) {
+      console.error('Error cancelling call:', error);
+    }
+  }
+
+  // End active call
+  async endActiveCall(): Promise<void> {
+    try {
+      await this.callService.endCall("declined", "Call ended by user");
+    } catch (error) {
+      console.error('Error ending call:', error);
+    }
+  }
+
+  // Toggle audio in active call
+  toggleCallAudio(): void {
+    this.callService.toggleAudio();
+  }
+
+  // Toggle video in active call
+  toggleCallVideo(): void {
+    this.callService.toggleVideo();
+  }
+
+  // Toggle screen share in active call
+  async toggleCallScreenShare(): Promise<void> {
+    try {
+      await this.callService.toggleScreenShare();
+    } catch (error) {
+      console.error('Error toggling screen share:', error);
+      this.showNotification('Failed to share screen', 'error');
+    }
+  }
+
+  // Create local participant info
+  private createLocalParticipant(): CallParticipant {
+    return {
+      userId: this.currentUser!.userId,
+      userName: this.currentUser!.userName,
+      displayName: this.currentUser!.displayName,
+      photoUrl: this.currentUser!.profilePhotoUrl
+    };
+  }
+
+  // Create remote participant info
+  private createRemoteParticipant(): CallParticipant {
+    return {
+      userId: this.selectedContact!.userId!,
+      userName: this.selectedContact!.userName!,
+      displayName: this.selectedContact!.displayName,
+      photoUrl: this.selectedContact!.photoUrl
+    };
+  }
+
+  // Show notification helper
+  private showNotification(message: string, type: 'success' | 'error' | 'info' | 'warning'): void {
+    // Use SweetAlert or your preferred notification library
+    Swal.fire({
+      icon: type === 'success' ? 'success' : type === 'error' ? 'error' : type === 'warning' ? 'warning' : 'info',
+      title: message,
+      timer: 2000,
+      showConfirmButton: false
+    });
+  }
+
 
   private setupSignalRListeners(): void {
     if (this.listenersSetup) return;

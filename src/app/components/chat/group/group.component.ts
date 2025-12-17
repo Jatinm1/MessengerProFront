@@ -1,3 +1,5 @@
+// src/app/components/chat/group/group.component.ts - Updated
+
 import { Component, Input, Output, EventEmitter } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Contact } from '../../../models/chat.models';
@@ -12,6 +14,8 @@ import { Contact } from '../../../models/chat.models';
 export class GroupComponent {
   @Input() selectedContact: Contact | null = null;
   @Output() openGroupDetails = new EventEmitter<void>();
+  @Output() audioCallClicked = new EventEmitter<void>(); // NEW
+  @Output() videoCallClicked = new EventEmitter<void>(); // NEW
 
   getGroupPhotoUrl(): string | undefined {
     return this.selectedContact?.photoUrl;
@@ -42,5 +46,17 @@ export class GroupComponent {
     if (diff < oneHour) return `${Math.floor(diff / oneMinute)} minutes ago`;
     if (diff < oneDay) return `${Math.floor(diff / oneHour)} hours ago`;
     return date.toLocaleDateString();
+  }
+
+  onAudioCallClick(): void {
+    if (!this.selectedContact?.isGroup) {
+      this.audioCallClicked.emit();
+    }
+  }
+
+  onVideoCallClick(): void {
+    if (!this.selectedContact?.isGroup) {
+      this.videoCallClicked.emit();
+    }
   }
 }
