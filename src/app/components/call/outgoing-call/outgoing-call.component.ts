@@ -50,9 +50,9 @@ export class OutgoingCallComponent implements OnInit, OnDestroy {
 
   private playCallingSound(): void {
     // You can add a custom calling tone audio file
-    this.ringingAudio = new Audio('/assets/sounds/calling.mp3');
-    this.ringingAudio.loop = true;
-    this.ringingAudio.play().catch(err => console.error('Error playing calling tone:', err));
+    // this.ringingAudio = new Audio('/assets/sounds/calling.mp3');
+    // this.ringingAudio.loop = true;
+    // this.ringingAudio.play().catch(err => console.error('Error playing calling tone:', err));
   }
 
   private stopCallingSound(): void {

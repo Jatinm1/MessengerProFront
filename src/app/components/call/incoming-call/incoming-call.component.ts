@@ -17,6 +17,8 @@ export class IncomingCallComponent implements OnInit, OnDestroy {
   @Output() reject = new EventEmitter<void>();
 
   ringingAudio: HTMLAudioElement | null = null;
+  isAccepting = false;
+
 
   ngOnInit(): void {
     // Play ringing sound
@@ -28,9 +30,15 @@ export class IncomingCallComponent implements OnInit, OnDestroy {
   }
 
   onAccept(): void {
-    // this.stopRingingSound();
-    this.accept.emit();
+  if (this.isAccepting) {
+    console.warn('⚠️ Accept already clicked, ignoring');
+    return;
   }
+
+  this.isAccepting = true;   // 🔒 LOCK
+  this.accept.emit();
+}
+
 
   onReject(): void {
     // this.stopRingingSound();

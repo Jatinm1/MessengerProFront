@@ -34,6 +34,8 @@ export class ActiveCallComponent implements OnInit, OnDestroy, AfterViewInit {
   remoteIsVideoOff = false;
   remoteIsScreenSharing = false;
 
+  
+
   // UI state
   showControls = true;
   callDuration = '00:00';
@@ -81,6 +83,13 @@ export class ActiveCallComponent implements OnInit, OnDestroy, AfterViewInit {
     const remoteStreamSub = this.webrtcService.remoteStream$.subscribe(stream => {
       if (stream && this.remoteVideoElement) {
         this.remoteVideoElement.nativeElement.srcObject = stream;
+        this.remoteVideoElement.nativeElement.muted = false;
+this.remoteVideoElement.nativeElement.volume = 1;
+
+this.remoteVideoElement.nativeElement
+  .play()
+  .catch(err => console.warn('Autoplay blocked', err));
+
       }
     });
     this.subscriptions.push(remoteStreamSub);
@@ -138,19 +147,22 @@ export class ActiveCallComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   onToggleAudio(): void {
-    this.isMuted = !this.webrtcService.isAudioEnabled();
-    this.toggleAudio.emit();
-  }
+  this.toggleAudio.emit();                 // 1️⃣ toggle track first
+  this.isMuted = !this.webrtcService.isAudioEnabled(); // 2️⃣ read NEW state
+}
+
 
   onToggleVideo(): void {
-    this.isVideoOff = !this.webrtcService.isVideoEnabled();
-    this.toggleVideo.emit();
-  }
+  this.toggleVideo.emit();
+  this.isVideoOff = !this.webrtcService.isVideoEnabled();
+}
+
 
   onToggleScreenShare(): void {
-    this.isScreenSharing = !this.isScreenSharing;
-    this.toggleScreenShare.emit();
-  }
+  this.toggleScreenShare.emit();
+  this.isScreenSharing = !this.isScreenSharing;
+}
+
 
   onEndCall(): void {
     this.endCall.emit();

@@ -507,30 +507,27 @@ private setupCallListeners(): void {
   // Accept incoming call
   // Replace your acceptIncomingCall method with this:
 async acceptIncomingCall(): Promise<void> {
-  if (!this.incomingCallOffer) {
-    console.error('❌ No incoming call offer to accept');
+  // 🚫 HARD GUARD
+  if (!this.incomingCallOffer) return;
+
+  if (this.currentCall?.status !== 'ringing') {
+    console.warn('⚠️ Accept ignored — call is already', this.currentCall?.status);
     return;
   }
-  
+
   console.log('✅ Accepting incoming call:', this.incomingCallOffer.callId);
-  
+
+  // 🔒 Prevent second click immediately
+  this.showIncomingCall = false;
+  this.cdr.detectChanges();
+
   try {
-    // Accept the call
     await this.callService.acceptCall(this.incomingCallOffer);
-    
-    // The UI will be updated by the currentCall$ subscription
-    // when the call status changes to 'connected'
-    
   } catch (error) {
     console.error('❌ Error accepting call:', error);
-    this.showNotification('Failed to accept call', 'error');
-    
-    // Clean up on error
-    this.showIncomingCall = false;
-    this.incomingCallOffer = null;
-    this.cdr.detectChanges();
   }
 }
+
 
   // Reject incoming call
   async rejectIncomingCall(): Promise<void> {
