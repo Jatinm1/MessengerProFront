@@ -13,6 +13,10 @@ export class WebRTCService {
   private screenStream: MediaStream | null = null;
   private pendingIceCandidates: RTCIceCandidateInit[] = [];
   private statsInterval: any = null;
+  private cameraTrackBeforeScreenShare?: MediaStreamTrack;
+
+  onRenegotiationNeeded?: (offer: RTCSessionDescriptionInit) => void;
+
 
 
   localStream$ = new BehaviorSubject<MediaStream | null>(null);
@@ -45,6 +49,9 @@ export class WebRTCService {
 
     this.pc = new RTCPeerConnection(this.config);
 
+    this.pc.addTransceiver('audio', { direction: 'sendrecv' });
+this.pc.addTransceiver('video', { direction: 'sendrecv' });
+
     // ICE candidates
     this.pc.onicecandidate = e => {
       if (e.candidate) {
@@ -57,13 +64,25 @@ export class WebRTCService {
 
     // Remote tracks
     this.remoteStream = new MediaStream();
-    this.pc.ontrack = e => {
-      console.log('📹 Remote track received:', e.track.kind);
-      e.streams[0].getTracks().forEach(track => {
-        this.remoteStream!.addTrack(track);
-      });
-      this.remoteStream$.next(this.remoteStream);
-    };
+    this.pc.ontrack = (event) => {
+  console.log('📹 Remote track received:', event.track.kind);
+
+  if (!this.remoteStream) {
+    this.remoteStream = new MediaStream();
+  }
+
+  // 🔥 SAFETY: streams[] may be empty
+  if (event.streams && event.streams[0]) {
+    event.streams[0].getTracks().forEach(track => {
+      this.remoteStream!.addTrack(track);
+    });
+  } else {
+    // Fallback: add single track
+    this.remoteStream.addTrack(event.track);
+  }
+
+  this.remoteStream$.next(this.remoteStream);
+};
 
     // Connection state
     this.pc.onconnectionstatechange = () => {
@@ -98,21 +117,69 @@ export class WebRTCService {
     console.log('✅ Peer connection initialized');
   }
 
-  async getUserMedia(audioOnly = false): Promise<MediaStream> {
+  async setRemoteOffer(offer: RTCSessionDescriptionInit): Promise<void> {
+  if (!this.pc) throw new Error('PC not initialized');
+  await this.pc.setRemoteDescription(new RTCSessionDescription(offer));
+}
+
+async createRenegotiationAnswer(): Promise<RTCSessionDescriptionInit> {
+  if (!this.pc) throw new Error('PC not initialized');
+
+  const answer = await this.pc.createAnswer();
+  await this.pc.setLocalDescription(answer);
+  return answer;
+}
+
+
+async getUserMedia(audioOnly = false): Promise<MediaStream> {
+  // 🔒 Prevent double camera access
+
+  // 🚫 Do NOT open camera while screen sharing
+if (this.screenStream && !audioOnly) {
+  console.log('🖥️ Screen sharing active — skipping camera access');
+  return this.localStream!;
+}
+
+  if (this.localStream) {
+    console.log('🎥 Reusing existing local stream');
+    return this.localStream;
+  }
+
   try {
-    return await this.tryGetMedia(audioOnly);
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: audioOnly ? false : true
+    });
+
+    this.localStream = stream;
+    this.localStream$.next(stream);
+
+    // 🔥 Attach tracks ONLY ONCE
+    stream.getTracks().forEach(track => {
+      const alreadyAdded = this.pc
+        ?.getSenders()
+        .some(s => s.track?.id === track.id);
+
+      if (!alreadyAdded) {
+        this.pc?.addTrack(track, stream);
+      }
+    });
+
+    return stream;
   } catch (err: any) {
     console.error('Media error:', err.name);
 
-    // Fallbacks
-    if (!audioOnly) {
-      // Try audio-only if video failed
-      return await this.tryGetMedia(true);
+    // 🎯 FALLBACK: If video fails → try audio-only
+    if (!audioOnly && err.name === 'NotReadableError') {
+      console.warn('🎤 Falling back to audio-only');
+      return this.getUserMedia(true);
     }
 
     throw err;
   }
 }
+
+
 
 private async tryGetMedia(audioOnly: boolean): Promise<MediaStream> {
   return navigator.mediaDevices.getUserMedia({
@@ -182,6 +249,24 @@ async logStats(): Promise<void> {
     
     return answer;
   }
+
+  setAudioEnabled(enabled: boolean): void {
+  const track = this.localStream?.getAudioTracks()[0];
+  if (track) {
+    track.enabled = enabled;
+    console.log('🎤 Audio:', enabled ? 'ON' : 'OFF');
+  }
+}
+
+setVideoEnabled(enabled: boolean): void {
+  const track = this.localStream?.getVideoTracks()[0];
+  if (!track) return;
+
+  track.enabled = enabled;
+  console.log('📹 Video:', enabled ? 'ON' : 'OFF');
+}
+
+
 
   async setRemoteDescription(answer: RTCSessionDescriptionInit): Promise<void> {
     if (!this.pc) throw new Error('PC not initialized');
@@ -271,29 +356,49 @@ private stopStatsMonitoring(): void {
 }
 
 
-  async startScreenShare(): Promise<void> {
-    console.log('🖥️ Starting screen share...');
-    
-    this.screenStream = await navigator.mediaDevices.getDisplayMedia({
-      video: true,
-      audio: false
-    });
+ async startScreenShare(): Promise<void> {
 
-    this.screenStream$.next(this.screenStream);
-
-    const screenTrack = this.screenStream.getVideoTracks()[0];
-    const sender = this.pc?.getSenders().find(s => s.track?.kind === 'video');
-
-    if (sender) {
-      await sender.replaceTrack(screenTrack);
-      console.log('✅ Screen share started');
-    }
-
-    screenTrack.onended = () => {
-      console.log('🖥️ Screen share ended');
-      this.stopScreenShare();
-    };
+  if (this.isScreenSharing()) {
+    console.warn('Already screen sharing');
+    return;
   }
+  this.screenStream = await navigator.mediaDevices.getDisplayMedia({
+    video: true
+  });
+
+  const screenTrack = this.screenStream.getVideoTracks()[0];
+  this.cameraTrackBeforeScreenShare =
+  this.localStream?.getVideoTracks()[0];
+
+  let sender =
+  this.pc?.getSenders().find(s => s.track?.kind === 'video') ??
+  this.pc?.getTransceivers()
+    .find(t => t.receiver.track.kind === 'video')?.sender;
+
+// 🔥 AUDIO CALL SAFETY NET
+if (!sender && this.pc) {
+  const transceiver = this.pc.getTransceivers().find(t => t.receiver.track.kind === 'video');
+  sender = transceiver?.sender;
+}
+
+if (!sender || !this.pc) {
+  throw new Error('Video sender not available for screen share');
+}
+
+
+  if (sender && this.pc) {
+    await sender.replaceTrack(screenTrack);
+
+    // 🔥 FORCE RENEGOTIATION
+    const offer = await this.pc.createOffer();
+    await this.pc.setLocalDescription(offer);
+
+    this.onRenegotiationNeeded?.(offer);
+  }
+
+  screenTrack.onended = () => this.stopScreenShare();
+}
+
 
   isAudioEnabled(): boolean {
     return !!this.localStream?.getAudioTracks().some(t => t.enabled);
@@ -303,23 +408,24 @@ private stopStatsMonitoring(): void {
     return !!this.localStream?.getVideoTracks().some(t => t.enabled);
   }
 
-  async stopScreenShare(): Promise<void> {
-    if (!this.screenStream) return;
+ async stopScreenShare(): Promise<void> {
+  if (!this.screenStream) return;
 
-    console.log('🖥️ Stopping screen share...');
-    
-    this.screenStream.getTracks().forEach(t => t.stop());
-    this.screenStream = null;
-    this.screenStream$.next(null);
+  this.screenStream.getTracks().forEach(t => t.stop());
+  this.screenStream = null;
+  this.screenStream$.next(null);
 
-    const camTrack = this.localStream?.getVideoTracks()[0];
-    const sender = this.pc?.getSenders().find(s => s.track?.kind === 'video');
+  const sender = this.pc
+    ?.getSenders()
+    .find(s => s.track?.kind === 'video');
 
-    if (sender && camTrack) {
-      await sender.replaceTrack(camTrack);
-      console.log('✅ Switched back to camera');
-    }
+  // 🔥 RESTORE CAMERA TRACK
+  if (sender && this.cameraTrackBeforeScreenShare) {
+    await sender.replaceTrack(this.cameraTrackBeforeScreenShare);
+    console.log('📹 Camera restored after screen share');
   }
+}
+
 
   isScreenSharing(): boolean {
     return !!this.screenStream;

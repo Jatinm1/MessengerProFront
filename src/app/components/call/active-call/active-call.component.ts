@@ -4,6 +4,7 @@ import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, ViewChild, E
 import { CommonModule } from '@angular/common';
 import { CallSession, CallParticipant, CallStateUpdate } from '../../../models/call.models';
 import { WebRTCService } from '../../../services/webrtc.service';
+import { CallService } from '../../../services/call.service';
 import { Subscription, interval } from 'rxjs';
 
 @Component({
@@ -34,8 +35,6 @@ export class ActiveCallComponent implements OnInit, OnDestroy, AfterViewInit {
   remoteIsVideoOff = false;
   remoteIsScreenSharing = false;
 
-  
-
   // UI state
   showControls = true;
   callDuration = '00:00';
@@ -45,12 +44,16 @@ export class ActiveCallComponent implements OnInit, OnDestroy, AfterViewInit {
   private controlsTimeout: any = null;
   private callTimer: any = null;
 
-  constructor(private webrtcService: WebRTCService) {}
+  constructor(
+    private webrtcService: WebRTCService,
+    private callService: CallService
+  ) {}
 
   ngOnInit(): void {
     this.startCallTimer();
     this.setupAutoHideControls();
     this.subscribeToStreams();
+    this.subscribeToRemoteStateUpdates();
   }
 
   ngAfterViewInit(): void {
@@ -58,6 +61,19 @@ export class ActiveCallComponent implements OnInit, OnDestroy, AfterViewInit {
     setTimeout(() => {
       this.setupVideoElements();
     }, 100);
+
+    this.webrtcService.remoteStream$
+  .subscribe(stream => {
+    if (!stream) return;
+
+    // 🔥 AUDIO FIX
+    const audio = document.createElement('audio');
+    audio.srcObject = stream;
+    audio.autoplay = true;
+
+    document.body.appendChild(audio);
+  });
+
   }
 
   ngOnDestroy(): void {
@@ -82,14 +98,14 @@ export class ActiveCallComponent implements OnInit, OnDestroy, AfterViewInit {
     // Subscribe to remote stream
     const remoteStreamSub = this.webrtcService.remoteStream$.subscribe(stream => {
       if (stream && this.remoteVideoElement) {
+        console.log('📺 Setting remote stream to video element');
         this.remoteVideoElement.nativeElement.srcObject = stream;
         this.remoteVideoElement.nativeElement.muted = false;
-this.remoteVideoElement.nativeElement.volume = 1;
+        this.remoteVideoElement.nativeElement.volume = 1;
 
-this.remoteVideoElement.nativeElement
-  .play()
-  .catch(err => console.warn('Autoplay blocked', err));
-
+        this.remoteVideoElement.nativeElement
+          .play()
+          .catch(err => console.warn('Autoplay blocked', err));
       }
     });
     this.subscriptions.push(remoteStreamSub);
@@ -98,6 +114,7 @@ this.remoteVideoElement.nativeElement
     const screenStreamSub = this.webrtcService.screenStream$.subscribe(stream => {
       if (stream && this.remoteVideoElement) {
         // When local user shares screen, show it in main video
+        console.log('🖥️ Setting screen share stream to video element');
         this.remoteVideoElement.nativeElement.srcObject = stream;
       }
     });
@@ -110,6 +127,15 @@ this.remoteVideoElement.nativeElement
       this.updateConnectionQuality(state);
     });
     this.subscriptions.push(connectionSub);
+  }
+
+  private subscribeToRemoteStateUpdates(): void {
+    // Subscribe to remote state updates from CallService
+    const remoteStateSub = this.callService.remoteStateUpdate$.subscribe(state => {
+      console.log('🔄 Remote state update received in ActiveCall:', state);
+      this.updateRemoteState(state);
+    });
+    this.subscriptions.push(remoteStateSub);
   }
 
   private startCallTimer(): void {
@@ -147,36 +173,54 @@ this.remoteVideoElement.nativeElement
   }
 
   onToggleAudio(): void {
-  this.toggleAudio.emit();                 // 1️⃣ toggle track first
-  this.isMuted = !this.webrtcService.isAudioEnabled(); // 2️⃣ read NEW state
-}
-
+    // Toggle the audio first
+    this.callService.toggleAudio();
+    
+    // Read the NEW state AFTER toggling
+    // Use setTimeout to ensure the toggle has completed
+    setTimeout(() => {
+      this.isMuted = !this.webrtcService.isAudioEnabled();
+      console.log('🎤 Local audio state updated:', this.isMuted ? 'MUTED' : 'UNMUTED');
+    }, 50);
+  }
 
   onToggleVideo(): void {
-  this.toggleVideo.emit();
-  this.isVideoOff = !this.webrtcService.isVideoEnabled();
-}
-
+    // Toggle the video first
+    this.callService.toggleVideo();
+    
+    // Read the NEW state AFTER toggling
+    setTimeout(() => {
+      this.isVideoOff = !this.webrtcService.isVideoEnabled();
+      console.log('📹 Local video state updated:', this.isVideoOff ? 'OFF' : 'ON');
+    }, 50);
+  }
 
   onToggleScreenShare(): void {
-  this.toggleScreenShare.emit();
-  this.isScreenSharing = !this.isScreenSharing;
-}
-
+    this.callService.toggleScreenShare();
+    
+    // Read the NEW state AFTER toggling
+    setTimeout(() => {
+      this.isScreenSharing = this.webrtcService.isScreenSharing();
+      console.log('🖥️ Local screen share state updated:', this.isScreenSharing ? 'SHARING' : 'NOT SHARING');
+    }, 50);
+  }
 
   onEndCall(): void {
     this.endCall.emit();
   }
 
   updateRemoteState(state: CallStateUpdate): void {
-    if (state.isMuted !== undefined) {
+    if (state.isMuted !== undefined && state.isMuted !== null) {
       this.remoteIsMuted = state.isMuted;
+      console.log('🔇 Remote mute state updated:', this.remoteIsMuted);
     }
-    if (state.isVideoOff !== undefined) {
+    if (state.isVideoOff !== undefined && state.isVideoOff !== null) {
       this.remoteIsVideoOff = state.isVideoOff;
+      console.log('📹 Remote video state updated:', this.remoteIsVideoOff);
     }
-    if (state.isScreenSharing !== undefined) {
+    if (state.isScreenSharing !== undefined && state.isScreenSharing !== null) {
       this.remoteIsScreenSharing = state.isScreenSharing;
+      console.log('🖥️ Remote screen share state updated:', this.remoteIsScreenSharing);
     }
   }
 

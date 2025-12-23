@@ -19,18 +19,35 @@ export class CallService {
   
   private ringingTimeout: any = null;
   private connectingTimeout: any = null;
+  private isMuted = false;
+  private isVideoOff = false;
+
+
 
   // CRITICAL FIX: Store ICE candidates that arrive before we're ready
   private pendingRemoteIceCandidates: any[] = [];
 
   constructor(
-    private webrtcService: WebRTCService,
-    private chatService: ChatService
-  ) {
-    this.setupSignalRListeners();
-  }
+  private webrtcService: WebRTCService,
+  private chatService: ChatService
+) {
+  this.setupSignalRListeners();
+
+  // 🔥 HANDLE SCREEN SHARE RENEGOTIATION
+  this.webrtcService.onRenegotiationNeeded = async (offer) => {
+    if (!this.currentCall) return;
+
+    await this.chatService.hubConnection?.invoke(
+      'SendRenegotiationOffer',
+      this.currentCall.callId,
+      offer
+    );
+  };
+}
+
 
   private setupSignalRListeners(): void {
+    
     // Incoming call offers
     this.chatService.hubConnection?.on('calloffer', async (offer: CallOffer) => {
       console.log('📞 Incoming call offer:', offer);
@@ -85,6 +102,8 @@ export class CallService {
     this.endCall('error', 'Failed to establish connection');
   }
 });
+
+
 
     // ICE candidates
     this.chatService.hubConnection?.on('icecandidate', async (data: IceCandidate) => {
@@ -156,6 +175,41 @@ export class CallService {
         this.cleanup();
       }
     });
+
+    this.chatService.hubConnection?.on(
+  'renegotiationoffer',
+  async (data: { callId: string; sdp: RTCSessionDescriptionInit }) => {
+
+    if (!this.currentCall || data.callId !== this.currentCall.callId) return;
+
+    console.log('🔁 Renegotiation offer received');
+
+    // 🔥 SET OFFER
+    await this.webrtcService.setRemoteOffer(data.sdp);
+
+    // 🔥 CREATE ANSWER
+    const answer = await this.webrtcService.createRenegotiationAnswer();
+
+    await this.chatService.hubConnection?.invoke(
+      'SendRenegotiationAnswer',
+      data.callId,
+      answer
+    );
+  }
+);
+
+this.chatService.hubConnection?.on(
+  'renegotiationanswer',
+  async (data: { callId: string; sdp: RTCSessionDescriptionInit }) => {
+
+    if (!this.currentCall || data.callId !== this.currentCall.callId) return;
+
+    console.log('🔁 Renegotiation answer received');
+
+    await this.webrtcService.setRemoteDescription(data.sdp);
+  }
+);
+
   }
 
   // CRITICAL FIX: Process pending ICE candidates after remote description is set
@@ -222,6 +276,8 @@ export class CallService {
   });
 
   }
+
+  
 
   async initiateCall(
     recipientId: string,
@@ -362,15 +418,25 @@ export class CallService {
     this.cleanup();
   }
 
-  toggleAudio(): void {
-    const isEnabled = this.webrtcService.toggleAudio();
-    this.sendStateUpdate({ isMuted: !isEnabled });
-  }
+ toggleAudio(): void {
+  this.isMuted = !this.isMuted;
+  this.webrtcService.setAudioEnabled(!this.isMuted);
 
-  toggleVideo(): void {
-    const isEnabled = this.webrtcService.toggleVideo();
-    this.sendStateUpdate({ isVideoOff: !isEnabled });
-  }
+  this.sendStateUpdate({
+    isMuted: this.isMuted
+  });
+}
+
+toggleVideo(): void {
+  this.isVideoOff = !this.isVideoOff;
+
+  this.webrtcService.setVideoEnabled(!this.isVideoOff);
+
+  this.sendStateUpdate({
+    isVideoOff: this.isVideoOff
+  });
+}
+
 
   async toggleScreenShare(): Promise<void> {
     const isSharing = this.webrtcService.isScreenSharing();

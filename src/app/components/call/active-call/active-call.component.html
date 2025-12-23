@@ -119,8 +119,7 @@
       </button>
 
       <!-- Screen Share -->
-      <button *ngIf="isVideoCall()" 
-              class="control-btn" 
+      <button class="control-btn" 
               [class.active]="isScreenSharing"
               (click)="onToggleScreenShare()"
               [title]="isScreenSharing ? 'Stop sharing' : 'Share screen'">
