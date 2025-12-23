@@ -34,19 +34,23 @@ export class GroupComponent {
     return 'Offline';
   }
 
-  formatLastSeen(time: string): string {
-    const date = new Date(time);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const oneMinute = 60 * 1000;
-    const oneHour = 60 * oneMinute;
-    const oneDay = 24 * oneHour;
+ formatLastSeen(time: string): string {
+  // 👇 force UTC interpretation
+  const date = new Date(time + 'Z');
+  const now = new Date();
 
-    if (diff < oneMinute) return 'just now';
-    if (diff < oneHour) return `${Math.floor(diff / oneMinute)} minutes ago`;
-    if (diff < oneDay) return `${Math.floor(diff / oneHour)} hours ago`;
-    return date.toLocaleDateString();
-  }
+  const diff = now.getTime() - date.getTime();
+  const oneMinute = 60 * 1000;
+  const oneHour = 60 * oneMinute;
+  const oneDay = 24 * oneHour;
+
+  if (diff < oneMinute) return 'just now';
+  if (diff < oneHour) return `${Math.floor(diff / oneMinute)} minutes ago`;
+  if (diff < oneDay) return `${Math.floor(diff / oneHour)} hours ago`;
+
+  return date.toLocaleDateString();
+}
+
 
   onAudioCallClick(): void {
     if (!this.selectedContact?.isGroup) {
