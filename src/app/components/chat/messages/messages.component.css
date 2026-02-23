@@ -445,7 +445,6 @@
 .msg-actions {
   position: absolute;
   top: -14px;
-  right: 12px;
   opacity: 0;
   transition: opacity 0.2s;
   z-index: 100;
@@ -471,6 +470,30 @@
   color: #64748b;
 }
 
+/* Position button on right for self messages */
+.msg.self .msg-actions {
+  right: 12px;
+}
+
+/* Position button on left for other messages */
+.msg.other .msg-actions {
+  left: 12px;
+}
+
+.msg:hover .msg-actions {
+  opacity: 1;
+}
+
+/* Menu opens to the left for self messages (sender) */
+.msg.self .msg-actions-menu {
+  right: 0;
+}
+
+/* Menu opens to the right for other messages (receiver) */
+.msg.other .msg-actions-menu {
+  left: 0;
+}
+
 .msg-actions-btn:hover {
   background: #f8fafc;
   border-color: #cbd5e1;
@@ -482,7 +505,6 @@
 .msg-actions-menu {
   position: absolute;
   top: 36px;
-  right: 0;
   background: white;
   border-radius: 12px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);

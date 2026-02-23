@@ -88,6 +88,8 @@ export class MessagesComponent implements AfterViewChecked {
     }
   }
 
+  
+
   startEditMessage(msg: Message): void {
     this.editingMessageId = msg.messageId;
     this.editMessageText = msg.body || '';

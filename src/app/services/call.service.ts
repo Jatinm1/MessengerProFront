@@ -4,54 +4,58 @@ import { Injectable } from '@angular/core';
 import { BehaviorSubject, filter, Subject, take } from 'rxjs';
 import { WebRTCService } from './webrtc.service';
 import { ChatService } from './chat.service';
-import { CallSession, CallType, CallStatus, CallOffer, CallAnswer, IceCandidate, CallParticipant, CallStateUpdate, CallEndReason } from '../models/call.models';
+import {
+  CallSession, CallType, CallStatus, CallOffer, CallAnswer,
+  IceCandidate, CallParticipant, CallStateUpdate, CallEndReason
+} from '../models/call.models';
 
 @Injectable({
   providedIn: 'root'
 })
 export class CallService {
   private currentCall: CallSession | null = null;
-  
+
   currentCall$ = new BehaviorSubject<CallSession | null>(null);
   incomingCall$ = new Subject<CallOffer>();
   callEnded$ = new Subject<{ callId: string; reason: CallEndReason }>();
   remoteStateUpdate$ = new Subject<CallStateUpdate>();
-  
+
+  // FIX (Bug 3): Expose screen sharing state so UI can react to remote-initiated stops
+  remoteScreenShareStarted$ = new Subject<{ callId: string; userId: string }>();
+  remoteScreenShareStopped$ = new Subject<{ callId: string; userId: string }>();
+
   private ringingTimeout: any = null;
   private connectingTimeout: any = null;
   private isMuted = false;
   private isVideoOff = false;
 
-
-
-  // CRITICAL FIX: Store ICE candidates that arrive before we're ready
+  // Buffer ICE candidates that arrive before remote description is set
   private pendingRemoteIceCandidates: any[] = [];
 
   constructor(
-  private webrtcService: WebRTCService,
-  private chatService: ChatService
-) {
-  this.setupSignalRListeners();
+    private webrtcService: WebRTCService,
+    private chatService: ChatService
+  ) {
+    this.setupSignalRListeners();
 
-  // 🔥 HANDLE SCREEN SHARE RENEGOTIATION
-  this.webrtcService.onRenegotiationNeeded = async (offer) => {
-    if (!this.currentCall) return;
+    // Handle screen share renegotiation
+    this.webrtcService.onRenegotiationNeeded = async (offer) => {
+      if (!this.currentCall) return;
 
-    await this.chatService.hubConnection?.invoke(
-      'SendRenegotiationOffer',
-      this.currentCall.callId,
-      offer
-    );
-  };
-}
-
+      await this.chatService.hubConnection?.invoke(
+        'SendRenegotiationOffer',
+        this.currentCall.callId,
+        offer
+      );
+    };
+  }
 
   private setupSignalRListeners(): void {
-    
+
     // Incoming call offers
     this.chatService.hubConnection?.on('calloffer', async (offer: CallOffer) => {
       console.log('📞 Incoming call offer:', offer);
-      
+
       this.currentCall = {
         callId: offer.callId,
         conversationId: offer.conversationId,
@@ -60,10 +64,10 @@ export class CallService {
         recipientId: offer.to.userId,
         status: 'ringing'
       };
-      
+
       this.currentCall$.next(this.currentCall);
       this.incomingCall$.next(offer);
-      
+
       this.ringingTimeout = setTimeout(() => {
         if (this.currentCall?.status === 'ringing') {
           this.endCall('missed', 'Call was not answered');
@@ -71,45 +75,41 @@ export class CallService {
       }, 45000);
     });
 
-    // CRITICAL FIX: Call answers - only process if we're the CALLER
-  this.chatService.hubConnection?.on('callanswer', async (answer: CallAnswer) => {
-  console.log('✅ Call answer received:', answer);
+    // Call answers — only the CALLER processes this
+    this.chatService.hubConnection?.on('callanswer', async (answer: CallAnswer) => {
+      console.log('✅ Call answer received:', answer);
 
-  if (!this.currentCall || this.currentCall.callId !== answer.callId) {
-    return;
-  }
+      if (!this.currentCall || this.currentCall.callId !== answer.callId) {
+        return;
+      }
 
-  // ✅ ONLY CALLER SHOULD PROCESS ANSWER
-  if (this.currentCall.status !== 'ringing') {
-    console.log('⚠️ Ignoring answer - not in ringing state');
-    return;
-  }
+      // Only the caller (ringing state) should process the answer
+      if (this.currentCall.status !== 'ringing') {
+        console.log('⚠️ Ignoring answer - not in ringing state');
+        return;
+      }
 
-  console.log('✅ Processing answer as CALLER');
+      console.log('✅ Processing answer as CALLER');
 
-  this.clearRingingTimeout();
-  this.updateCallStatus('connecting');
+      this.clearRingingTimeout();
+      this.updateCallStatus('connecting');
 
-  try {
-    await this.webrtcService.setRemoteDescription(answer.sdp);
-    console.log('✅ Remote description set on CALLER');
+      try {
+        await this.webrtcService.setRemoteDescription(answer.sdp);
+        console.log('✅ Remote description set on CALLER');
 
-    await this.processPendingIceCandidates();
-
-    this.waitForConnection();
-  } catch (error) {
-    console.error('❌ Failed to process answer:', error);
-    this.endCall('error', 'Failed to establish connection');
-  }
-});
-
-
+        await this.processPendingIceCandidates();
+        this.waitForConnection();
+      } catch (error) {
+        console.error('❌ Failed to process answer:', error);
+        this.endCall('error', 'Failed to establish connection');
+      }
+    });
 
     // ICE candidates
     this.chatService.hubConnection?.on('icecandidate', async (data: IceCandidate) => {
       if (this.currentCall?.callId === data.callId) {
         try {
-          // Store candidates if remote description not set yet
           if (!this.webrtcService.hasRemoteDescription()) {
             console.log('📦 Buffering ICE candidate - remote description not set yet');
             this.pendingRemoteIceCandidates.push(data.candidate);
@@ -125,7 +125,7 @@ export class CallService {
     // Call rejections
     this.chatService.hubConnection?.on('callrejected', (data: { callId: string; reason: string }) => {
       console.log('❌ Call rejected:', data);
-      
+
       if (this.currentCall?.callId === data.callId) {
         this.clearAllTimeouts();
         this.updateCallStatus('declined');
@@ -140,7 +140,7 @@ export class CallService {
     // Call end
     this.chatService.hubConnection?.on('callended', (data: { callId: string; endedBy: string; reason: string }) => {
       console.log('📴 Call ended:', data);
-      
+
       if (this.currentCall?.callId === data.callId) {
         this.clearAllTimeouts();
         this.updateCallStatus('ended');
@@ -155,8 +155,22 @@ export class CallService {
     // Remote state updates
     this.chatService.hubConnection?.on('callstateupdate', (data: CallStateUpdate) => {
       console.log('🔄 Remote state update:', data);
-      
+
       if (this.currentCall?.callId === data.callId) {
+        // FIX (Bug 3): When we detect remote started screen sharing, stop our own
+        // screen share so only one person shares at a time.
+        if (data.isScreenSharing === true && this.webrtcService.isScreenSharing()) {
+          console.log('🖥️ Remote started screen sharing — stopping local screen share');
+          this.webrtcService.stopScreenShare().then(() => {
+            // Notify UI that local screen share was preempted
+            this.remoteScreenShareStarted$.next({ callId: data.callId, userId: data.userId });
+          });
+        } else if (data.isScreenSharing === true) {
+          this.remoteScreenShareStarted$.next({ callId: data.callId, userId: data.userId });
+        } else if (data.isScreenSharing === false) {
+          this.remoteScreenShareStopped$.next({ callId: data.callId, userId: data.userId });
+        }
+
         this.remoteStateUpdate$.next(data);
       }
     });
@@ -164,7 +178,7 @@ export class CallService {
     // Busy signal
     this.chatService.hubConnection?.on('callbusy', (data: { callId: string }) => {
       console.log('📵 User is busy:', data);
-      
+
       if (this.currentCall?.callId === data.callId) {
         this.clearAllTimeouts();
         this.updateCallStatus('busy');
@@ -176,47 +190,41 @@ export class CallService {
       }
     });
 
+    // Renegotiation offer (e.g. remote started/stopped screen share)
     this.chatService.hubConnection?.on(
-  'renegotiationoffer',
-  async (data: { callId: string; sdp: RTCSessionDescriptionInit }) => {
+      'renegotiationoffer',
+      async (data: { callId: string; sdp: RTCSessionDescriptionInit }) => {
+        if (!this.currentCall || data.callId !== this.currentCall.callId) return;
 
-    if (!this.currentCall || data.callId !== this.currentCall.callId) return;
+        console.log('🔁 Renegotiation offer received');
 
-    console.log('🔁 Renegotiation offer received');
+        await this.webrtcService.setRemoteOffer(data.sdp);
+        const answer = await this.webrtcService.createRenegotiationAnswer();
 
-    // 🔥 SET OFFER
-    await this.webrtcService.setRemoteOffer(data.sdp);
+        await this.chatService.hubConnection?.invoke(
+          'SendRenegotiationAnswer',
+          data.callId,
+          answer
+        );
+      }
+    );
 
-    // 🔥 CREATE ANSWER
-    const answer = await this.webrtcService.createRenegotiationAnswer();
+    // Renegotiation answer
+    this.chatService.hubConnection?.on(
+      'renegotiationanswer',
+      async (data: { callId: string; sdp: RTCSessionDescriptionInit }) => {
+        if (!this.currentCall || data.callId !== this.currentCall.callId) return;
 
-    await this.chatService.hubConnection?.invoke(
-      'SendRenegotiationAnswer',
-      data.callId,
-      answer
+        console.log('🔁 Renegotiation answer received');
+        await this.webrtcService.setRemoteDescription(data.sdp);
+      }
     );
   }
-);
 
-this.chatService.hubConnection?.on(
-  'renegotiationanswer',
-  async (data: { callId: string; sdp: RTCSessionDescriptionInit }) => {
-
-    if (!this.currentCall || data.callId !== this.currentCall.callId) return;
-
-    console.log('🔁 Renegotiation answer received');
-
-    await this.webrtcService.setRemoteDescription(data.sdp);
-  }
-);
-
-  }
-
-  // CRITICAL FIX: Process pending ICE candidates after remote description is set
   private async processPendingIceCandidates(): Promise<void> {
     if (this.pendingRemoteIceCandidates.length > 0) {
       console.log(`📦 Processing ${this.pendingRemoteIceCandidates.length} pending ICE candidates`);
-      
+
       for (const candidate of this.pendingRemoteIceCandidates) {
         try {
           await this.webrtcService.addIceCandidate(candidate);
@@ -224,60 +232,54 @@ this.chatService.hubConnection?.on(
           console.error('❌ Error adding pending ICE candidate:', error);
         }
       }
-      
+
       this.pendingRemoteIceCandidates = [];
     }
   }
 
-  // CRITICAL FIX: Wait for WebRTC connection to establish
   private waitForConnection(): void {
     console.log('⏳ Waiting for WebRTC connection to establish...');
-    
-    // Set a timeout for connection
+
     this.connectingTimeout = setTimeout(() => {
       if (this.currentCall?.status === 'connecting') {
         console.log('❌ Connection timeout');
         this.endCall('error', 'Connection timeout');
       }
-    }, 30000); // 30 seconds
+    }, 30000);
 
-    // Subscribe to connection state changes
     this.webrtcService.connectionState$
-  .pipe(
-    filter(state =>
-      state === 'connected' ||
-      state === 'failed' ||
-      state === 'closed'
-    ),
-    take(1)
-  )
-  .subscribe(state => {
-    console.log('🌐 Connection state:', state);
+      .pipe(
+        filter(state =>
+          state === 'connected' ||
+          state === 'failed' ||
+          state === 'closed'
+        ),
+        take(1)
+      )
+      .subscribe(state => {
+        console.log('🌐 Connection state:', state);
 
-    if (state === 'connected') {
-      console.log('✅ WebRTC connection established!');
-      this.clearConnectingTimeout();
-      this.updateCallStatus('connected');
+        if (state === 'connected') {
+          console.log('✅ WebRTC connection established!');
+          this.clearConnectingTimeout();
+          this.updateCallStatus('connected');
 
-      if (this.currentCall) {
-        this.currentCall.startedAt = new Date();
-        this.currentCall$.next(this.currentCall);
-      }
-    } else {
-      if (
-        this.currentCall?.status === 'connecting' &&
-        !this.webrtcService.isCleaningUp
-      ) {
-        console.log('❌ WebRTC connection failed');
-        this.clearConnectingTimeout();
-        this.endCall('error', 'Connection failed');
-      }
-    }
-  });
-
+          if (this.currentCall) {
+            this.currentCall.startedAt = new Date();
+            this.currentCall$.next(this.currentCall);
+          }
+        } else {
+          if (
+            this.currentCall?.status === 'connecting' &&
+            !this.webrtcService.isCleaningUp
+          ) {
+            console.log('❌ WebRTC connection failed');
+            this.clearConnectingTimeout();
+            this.endCall('error', 'Connection failed');
+          }
+        }
+      });
   }
-
-  
 
   async initiateCall(
     recipientId: string,
@@ -292,7 +294,7 @@ this.chatService.hubConnection?.on(
       }
 
       const callId = this.generateCallId();
-      
+
       this.currentCall = {
         callId,
         conversationId,
@@ -301,15 +303,18 @@ this.chatService.hubConnection?.on(
         recipientId,
         status: 'initiating'
       };
-      
+
       console.log('📞 Created call session:', this.currentCall);
       this.currentCall$.next(this.currentCall);
 
       // Initialize WebRTC
       await this.webrtcService.initializePeerConnection();
-      await this.webrtcService.getUserMedia(callType === 'audio');
 
-      // CRITICAL FIX: Subscribe to ICE candidates BEFORE creating offer
+      // FIX (Bug 2): Pass audioOnly flag based on callType BEFORE getUserMedia
+      const audioOnly = callType === 'audio';
+      await this.webrtcService.getUserMedia(audioOnly);
+
+      // Subscribe to ICE candidates BEFORE creating offer
       this.webrtcService.iceCandidates$.subscribe(async (candidate) => {
         await this.sendIceCandidate(callId, candidate);
       });
@@ -345,21 +350,25 @@ this.chatService.hubConnection?.on(
   }
 
   async acceptCall(offer: CallOffer): Promise<void> {
-     if (!this.currentCall || this.currentCall.status !== 'ringing') {
-    console.warn('⚠️ acceptCall ignored — invalid state');
-    return;
-  }
+    if (!this.currentCall || this.currentCall.status !== 'ringing') {
+      console.warn('⚠️ acceptCall ignored — invalid state');
+      return;
+    }
+
     try {
       console.log('🎯 Accepting call:', offer);
-      
+
       this.clearRingingTimeout();
       this.updateCallStatus('connecting');
 
       // Initialize WebRTC
       await this.webrtcService.initializePeerConnection();
-      await this.webrtcService.getUserMedia(offer.callType === 'audio');
 
-      // CRITICAL FIX: Subscribe to ICE candidates BEFORE creating answer
+      // FIX (Bug 2): Pass correct audioOnly flag based on the OFFER's callType
+      const audioOnly = offer.callType === 'audio';
+      await this.webrtcService.getUserMedia(audioOnly);
+
+      // Subscribe to ICE candidates BEFORE creating answer
       this.webrtcService.iceCandidates$.subscribe(async (candidate) => {
         await this.sendIceCandidate(offer.callId, candidate);
       });
@@ -391,17 +400,17 @@ this.chatService.hubConnection?.on(
 
   async rejectCall(callId: string, reason: string = 'Call declined'): Promise<void> {
     this.clearAllTimeouts();
-    
+
     if (this.chatService.hubConnection) {
       await this.chatService.hubConnection.invoke('RejectCall', callId, reason);
     }
-    
+
     this.cleanup();
   }
 
   async endCall(reason: CallEndReason['reason'] = 'normal', message?: string): Promise<void> {
     this.clearAllTimeouts();
-    
+
     if (this.currentCall && this.chatService.hubConnection) {
       await this.chatService.hubConnection.invoke(
         'EndCall',
@@ -409,38 +418,32 @@ this.chatService.hubConnection?.on(
         message || 'Call ended'
       );
     }
-    
+
     this.callEnded$.next({
       callId: this.currentCall?.callId || '',
       reason: { reason, message }
     });
-    
+
     this.cleanup();
   }
 
- toggleAudio(): void {
-  this.isMuted = !this.isMuted;
-  this.webrtcService.setAudioEnabled(!this.isMuted);
+  toggleAudio(): void {
+    this.isMuted = !this.isMuted;
+    this.webrtcService.setAudioEnabled(!this.isMuted);
+    this.sendStateUpdate({ isMuted: this.isMuted });
+  }
 
-  this.sendStateUpdate({
-    isMuted: this.isMuted
-  });
-}
+  toggleVideo(): void {
+    this.isVideoOff = !this.isVideoOff;
+    this.webrtcService.setVideoEnabled(!this.isVideoOff);
+    this.sendStateUpdate({ isVideoOff: this.isVideoOff });
+  }
 
-toggleVideo(): void {
-  this.isVideoOff = !this.isVideoOff;
-
-  this.webrtcService.setVideoEnabled(!this.isVideoOff);
-
-  this.sendStateUpdate({
-    isVideoOff: this.isVideoOff
-  });
-}
-
-
+  // FIX (Bug 3): toggleScreenShare properly handles both start and stop,
+  // and always notifies the remote peer of the state change.
   async toggleScreenShare(): Promise<void> {
     const isSharing = this.webrtcService.isScreenSharing();
-    
+
     if (isSharing) {
       await this.webrtcService.stopScreenShare();
       this.sendStateUpdate({ isScreenSharing: false });
@@ -457,7 +460,6 @@ toggleVideo(): void {
 
   private async sendCallOffer(offer: CallOffer): Promise<void> {
     if (this.chatService.hubConnection) {
-      // CRITICAL FIX: Send callId as first parameter
       await this.chatService.hubConnection.invoke(
         'SendCallOffer',
         offer.callId,
@@ -529,6 +531,8 @@ toggleVideo(): void {
 
   private cleanup(): void {
     this.pendingRemoteIceCandidates = [];
+    this.isMuted = false;
+    this.isVideoOff = false;
     this.webrtcService.cleanup();
     this.currentCall = null;
     this.currentCall$.next(null);
@@ -538,16 +542,13 @@ toggleVideo(): void {
     return `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
-  // CRITICAL FIX: Add method to get current user ID
-
-
   getCurrentCall(): CallSession | null {
     return this.currentCall;
   }
 
   isInCall(): boolean {
-    return this.currentCall !== null && 
-           this.currentCall.status !== 'ended' && 
-           this.currentCall.status !== 'declined';
+    return this.currentCall !== null &&
+      this.currentCall.status !== 'ended' &&
+      this.currentCall.status !== 'declined';
   }
 }

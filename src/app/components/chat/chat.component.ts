@@ -1,3 +1,9 @@
+// Chat Component - FIXED VERSION
+// Key changes:
+// 1. Added duplicate message check in messageReceived$ handler
+// 2. Ensured messageSent$ also checks for duplicates
+// 3. Better conversation matching logic
+
 import {
   Component,
   OnInit,
@@ -34,11 +40,6 @@ import { CallSession, CallOffer, CallParticipant, CallType } from '../../models/
 import { ActiveCallComponent } from '../call/active-call/active-call.component';
 import { IncomingCallComponent } from '../call/incoming-call/incoming-call.component';
 import { OutgoingCallComponent } from '../call/outgoing-call/outgoing-call.component';
-// import { ActiveCallComponent } from '../call/active-call/active-call.component';
-// import { IncomingCallComponent } from '../call/incoming-call/incoming-call.component';
-// import { OutgoingCallComponent } from '../call/outgoing-call/outgoing-call.component';
-
-
 
 interface MessageWithDate extends Message {
   dateLabel?: string;
@@ -87,7 +88,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
 
   currentUser: User | null = null;
   messages: MessageWithDate[] = [];
-  contacts: Contact[] = []; // NEW: Store contacts for search modal
+  contacts: Contact[] = [];
 
   currentChatUserId: string | null = null;
   conversationId: string | null = null;
@@ -136,10 +137,9 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
   viewerMediaType: 'image' | 'video' | null = null;
 
   showTransferAdminModal = false;
-  transferableMembers: User[] = []; // list of members you can assign as admin
+  transferableMembers: User[] = [];
   selectedNewAdminId: string | null = null;
 
-  // Add these new properties
   showDeleteGroupModal = false;
   deleteConfirmationText = '';
 
@@ -192,8 +192,6 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
 
       if (state && state.conversationId) {
         setTimeout(() => {
-          // The sidebar component will load contacts, so we find the contact there
-          // For now, we simulate finding the contact to open the chat
           const tempContact: Contact = {
             conversationId: state.conversationId,
             isGroup: state.isGroup || false,
@@ -259,23 +257,16 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
           alert(error);
         });
 
-      // ADD THIS: Listen for group deletion events
       this.chatService.groupDeleted$
         .pipe(takeUntil(this.destroy$))
         .subscribe((data) => {
-          // If the current chat is the deleted group, close it
           if (this.conversationId === data.conversationId) {
             this.selectedContact = null;
             this.showChat = false;
             this.conversationId = null;
             this.messages = [];
           }
-
-          // Show notification to user
-          // alert(`The group "${data.groupName}" has been deleted by an admin.`);
         });
-
-      // ... rest of existing ngOnInit code ...
     } catch (error) {
       console.error('Failed to connect to chat hub:', error);
     }
@@ -292,19 +283,16 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
       this.shouldScrollToTarget = false;
     }
 
-    // ✅ Only auto-focus if NOT editing
     if (this.messagesComp && this.messagesComp.editingMessageId === null) {
       this.autoFocusMessageInput();
     }
   }
 
   private autoFocusMessageInput(): void {
-    // ✅ Don't focus message input if we're editing a message
     if (this.editingMessageId !== null) {
       return;
     }
 
-    // Don't focus if any modal is open
     const isAnyModalOpen =
       this.showCreateGroupModal ||
       this.showGroupDetailsModal ||
@@ -331,205 +319,175 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     }
   }
 
- // Replace your setupCallListeners method with this:
-// Replace your setupCallListeners method with this:
-private setupCallListeners(): void {
-  // Listen for incoming calls
-  this.callService.incomingCall$
-    .pipe(takeUntil(this.destroy$))
-    .subscribe((offer) => {
-      console.log('📞 Incoming call received in component:', offer);
-      this.incomingCallOffer = offer;
-      this.remoteCallParticipant = offer.from;
-      this.localCallParticipant = this.createLocalParticipant();
-      this.showIncomingCall = true;
-      
-      // Hide other call UIs
-      this.showOutgoingCall = false;
-      this.showActiveCall = false;
-      
-      this.cdr.detectChanges();
-    });
+  // ========================================
+  // CALL LISTENERS
+  // ========================================
+  private setupCallListeners(): void {
+    this.callService.incomingCall$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((offer) => {
+        console.log('📞 Incoming call received in component:', offer);
+        this.incomingCallOffer = offer;
+        this.remoteCallParticipant = offer.from;
+        this.localCallParticipant = this.createLocalParticipant();
+        this.showIncomingCall = true;
+        
+        this.showOutgoingCall = false;
+        this.showActiveCall = false;
+        
+        this.cdr.detectChanges();
+      });
 
-  // Listen for current call changes
-  this.callService.currentCall$
-    .pipe(takeUntil(this.destroy$))
-    .subscribe((call) => {
-      console.log('🔄 Call state changed:', call);
-      this.currentCall = call;
-      
-      if (call) {
-        // Determine which UI to show based on status
-        switch (call.status) {
-          case 'ringing':
-            if (call.initiatorId === this.currentUser?.userId) {
-              // Outgoing call - I initiated
-              this.showOutgoingCall = true;
+    this.callService.currentCall$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((call) => {
+        console.log('🔄 Call state changed:', call);
+        this.currentCall = call;
+        
+        if (call) {
+          switch (call.status) {
+            case 'ringing':
+              if (call.initiatorId === this.currentUser?.userId) {
+                this.showOutgoingCall = true;
+                this.showIncomingCall = false;
+                this.showActiveCall = false;
+              } else {
+                this.showIncomingCall = true;
+                this.showOutgoingCall = false;
+                this.showActiveCall = false;
+              }
+              break;
+              
+            case 'connecting':
+              console.log('⏳ Call connecting...');
+              break;
+              
+            case 'connected':
+              console.log('✅ Call connected, showing active call UI');
               this.showIncomingCall = false;
-              this.showActiveCall = false;
-            } else {
-              // Incoming call - showing in incomingCall$ handler
-              this.showIncomingCall = true;
+              this.showOutgoingCall = false;
+              this.showActiveCall = true;
+              break;
+              
+            case 'ended':
+            case 'declined':
+            case 'missed':
+            case 'busy':
+              this.showIncomingCall = false;
               this.showOutgoingCall = false;
               this.showActiveCall = false;
-            }
-            break;
-            
-          case 'connecting':
-            // Show connecting state
-            console.log('⏳ Call connecting...');
-            // Keep current UI showing
-            break;
-            
-          case 'connected':
-            // Show active call UI
-            console.log('✅ Call connected, showing active call UI');
-            this.showIncomingCall = false;
-            this.showOutgoingCall = false;
-            this.showActiveCall = true;
-            break;
-            
-          case 'ended':
-          case 'declined':
-          case 'missed':
-          case 'busy':
-            // Hide all call UIs
-            this.showIncomingCall = false;
-            this.showOutgoingCall = false;
-            this.showActiveCall = false;
-            break;
+              break;
+          }
+        } else {
+          this.showIncomingCall = false;
+          this.showOutgoingCall = false;
+          this.showActiveCall = false;
         }
-      } else {
-        // No call - hide all UIs
+        
+        this.cdr.detectChanges();
+      });
+
+    this.callService.callEnded$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((data) => {
+        console.log('📴 Call ended:', data);
+        
         this.showIncomingCall = false;
         this.showOutgoingCall = false;
         this.showActiveCall = false;
-      }
+        this.currentCall = null;
+        this.incomingCallOffer = null;
+        this.remoteCallParticipant = null;
+        
+        if (data.reason.reason === 'declined') {
+          this.showNotification('Call declined', 'info');
+        } else if (data.reason.reason === 'missed') {
+          this.showNotification('Call was not answered', 'warning');
+        } else if (data.reason.reason === 'busy') {
+          this.showNotification('User is busy', 'warning');
+        }
+        
+        this.cdr.detectChanges();
+      });
+
+    this.callService.remoteStateUpdate$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((state) => {
+        console.log('🔄 Remote state update:', state);
+        this.cdr.detectChanges();
+      });
+  }
+
+  async initiateAudioCall(): Promise<void> {
+    if (!this.selectedContact || !this.currentUser) {
+      console.error('❌ No contact selected or no current user');
+      return;
+    }
+    
+    console.log('📞 Initiating audio call to:', this.selectedContact.displayName);
+    
+    try {
+      this.localCallParticipant = this.createLocalParticipant();
+      this.remoteCallParticipant = this.createRemoteParticipant();
       
-      this.cdr.detectChanges();
-    });
+      await this.callService.initiateCall(
+        this.selectedContact.userId!,
+        this.conversationId!,
+        'audio',
+        this.remoteCallParticipant,
+        this.localCallParticipant
+      );
+    } catch (error) {
+      console.error('❌ Error initiating audio call:', error);
+      this.showNotification('Failed to initiate call', 'error');
+    }
+  }
 
-  // Listen for call ended
-  this.callService.callEnded$
-    .pipe(takeUntil(this.destroy$))
-    .subscribe((data) => {
-      console.log('📴 Call ended:', data);
+  async initiateVideoCall(): Promise<void> {
+    if (!this.selectedContact || !this.currentUser) {
+      console.error('❌ No contact selected or no current user');
+      return;
+    }
+    
+    console.log('📹 Initiating video call to:', this.selectedContact.displayName);
+    
+    try {
+      this.localCallParticipant = this.createLocalParticipant();
+      this.remoteCallParticipant = this.createRemoteParticipant();
       
-      this.showIncomingCall = false;
-      this.showOutgoingCall = false;
-      this.showActiveCall = false;
-      this.currentCall = null;
-      this.incomingCallOffer = null;
-      this.remoteCallParticipant = null;
-      
-      // Show notification based on reason
-      if (data.reason.reason === 'declined') {
-        this.showNotification('Call declined', 'info');
-      } else if (data.reason.reason === 'missed') {
-        this.showNotification('Call was not answered', 'warning');
-      } else if (data.reason.reason === 'busy') {
-        this.showNotification('User is busy', 'warning');
-      }
-      
-      this.cdr.detectChanges();
-    });
-
-  // Listen for remote state updates (mute, video, etc.)
-  this.callService.remoteStateUpdate$
-    .pipe(takeUntil(this.destroy$))
-    .subscribe((state) => {
-      console.log('🔄 Remote state update:', state);
-      // The active-call component will handle this
-      this.cdr.detectChanges();
-    });
-}
-
-  // Initiate audio call
- async initiateAudioCall(): Promise<void> {
-  if (!this.selectedContact || !this.currentUser) {
-    console.error('❌ No contact selected or no current user');
-    return;
-  }
-  
-  console.log('📞 Initiating audio call to:', this.selectedContact.displayName);
-  
-  try {
-    // Set participants BEFORE initiating call
-    this.localCallParticipant = this.createLocalParticipant();
-    this.remoteCallParticipant = this.createRemoteParticipant();
-    
-    await this.callService.initiateCall(
-      this.selectedContact.userId!,
-      this.conversationId!,
-      'audio',
-      this.remoteCallParticipant,
-      this.localCallParticipant // Pass local participant too
-    );
-    
-    // The UI will be updated by currentCall$ subscription
-    
-  } catch (error) {
-    console.error('❌ Error initiating audio call:', error);
-    this.showNotification('Failed to initiate call', 'error');
-  }
-}
-
-  // Initiate video call
- async initiateVideoCall(): Promise<void> {
-  if (!this.selectedContact || !this.currentUser) {
-    console.error('❌ No contact selected or no current user');
-    return;
-  }
-  
-  console.log('📹 Initiating video call to:', this.selectedContact.displayName);
-  
-  try {
-    // Set participants BEFORE initiating call
-    this.localCallParticipant = this.createLocalParticipant();
-    this.remoteCallParticipant = this.createRemoteParticipant();
-    
-    await this.callService.initiateCall(
-      this.selectedContact.userId!,
-      this.conversationId!,
-      'video',
-      this.remoteCallParticipant,
-      this.localCallParticipant // Pass local participant too
-    );
-    
-    // The UI will be updated by currentCall$ subscription
-    
-  } catch (error) {
-    console.error('❌ Error initiating video call:', error);
-    this.showNotification('Failed to initiate call', 'error');
-  }
-}
-
-  // Accept incoming call
-  // Replace your acceptIncomingCall method with this:
-async acceptIncomingCall(): Promise<void> {
-  // 🚫 HARD GUARD
-  if (!this.incomingCallOffer) return;
-
-  if (this.currentCall?.status !== 'ringing') {
-    console.warn('⚠️ Accept ignored — call is already', this.currentCall?.status);
-    return;
+      await this.callService.initiateCall(
+        this.selectedContact.userId!,
+        this.conversationId!,
+        'video',
+        this.remoteCallParticipant,
+        this.localCallParticipant
+      );
+    } catch (error) {
+      console.error('❌ Error initiating video call:', error);
+      this.showNotification('Failed to initiate call', 'error');
+    }
   }
 
-  console.log('✅ Accepting incoming call:', this.incomingCallOffer.callId);
+  async acceptIncomingCall(): Promise<void> {
+    if (!this.incomingCallOffer) return;
 
-  // 🔒 Prevent second click immediately
-  this.showIncomingCall = false;
-  this.cdr.detectChanges();
+    if (this.currentCall?.status !== 'ringing') {
+      console.warn('⚠️ Accept ignored — call is already', this.currentCall?.status);
+      return;
+    }
 
-  try {
-    await this.callService.acceptCall(this.incomingCallOffer);
-  } catch (error) {
-    console.error('❌ Error accepting call:', error);
+    console.log('✅ Accepting incoming call:', this.incomingCallOffer.callId);
+
+    this.showIncomingCall = false;
+    this.cdr.detectChanges();
+
+    try {
+      await this.callService.acceptCall(this.incomingCallOffer);
+    } catch (error) {
+      console.error('❌ Error accepting call:', error);
+    }
   }
-}
 
-
-  // Reject incoming call
   async rejectIncomingCall(): Promise<void> {
     if (!this.incomingCallOffer) return;
     
@@ -542,7 +500,6 @@ async acceptIncomingCall(): Promise<void> {
     }
   }
 
-  // Cancel outgoing call
   async cancelOutgoingCall(): Promise<void> {
     try {
       await this.callService.endCall('normal', 'Call cancelled');
@@ -551,7 +508,6 @@ async acceptIncomingCall(): Promise<void> {
     }
   }
 
-  // End active call
   async endActiveCall(): Promise<void> {
     try {
       await this.callService.endCall("declined", "Call ended by user");
@@ -560,17 +516,14 @@ async acceptIncomingCall(): Promise<void> {
     }
   }
 
-  // Toggle audio in active call
   toggleCallAudio(): void {
     this.callService.toggleAudio();
   }
 
-  // Toggle video in active call
   toggleCallVideo(): void {
     this.callService.toggleVideo();
   }
 
-  // Toggle screen share in active call
   async toggleCallScreenShare(): Promise<void> {
     try {
       await this.callService.toggleScreenShare();
@@ -580,7 +533,6 @@ async acceptIncomingCall(): Promise<void> {
     }
   }
 
-  // Create local participant info
   private createLocalParticipant(): CallParticipant {
     return {
       userId: this.currentUser!.userId,
@@ -590,7 +542,6 @@ async acceptIncomingCall(): Promise<void> {
     };
   }
 
-  // Create remote participant info
   private createRemoteParticipant(): CallParticipant {
     return {
       userId: this.selectedContact!.userId!,
@@ -600,9 +551,7 @@ async acceptIncomingCall(): Promise<void> {
     };
   }
 
-  // Show notification helper
   private showNotification(message: string, type: 'success' | 'error' | 'info' | 'warning'): void {
-    // Use SweetAlert or your preferred notification library
     Swal.fire({
       icon: type === 'success' ? 'success' : type === 'error' ? 'error' : type === 'warning' ? 'warning' : 'info',
       title: message,
@@ -611,34 +560,60 @@ async acceptIncomingCall(): Promise<void> {
     });
   }
 
-
+  // ========================================
+  // SIGNALR LISTENERS - FIXED FOR DUPLICATES
+  // ========================================
   private setupSignalRListeners(): void {
     if (this.listenersSetup) return;
     this.listenersSetup = true;
 
+    // FIX: Add duplicate check for received messages
     this.chatService.messageReceived$
       .pipe(takeUntil(this.destroy$))
       .subscribe((message) => {
+        // Skip if this is from the current user (already handled by messageSent$)
         if (message.fromUserId === this.currentUser?.userId) return;
 
+        // Only process if this message is for the current conversation
         if (message.conversationId === this.conversationId) {
-          this.addMessageToView(message, false);
+          // ✅ CHECK FOR DUPLICATES - This is the key fix!
+          const messageExists = this.messages.some(
+            m => Number(m.messageId) === Number(message.messageId)
+          );
 
-          if (this.userScrolledUp) {
-            this.newMessageCount++;
-            this.showNewMessageButton = true;
+          if (!messageExists) {
+            console.log('✅ Adding new received message:', message.messageId);
+            this.addMessageToView(message, false);
+
+            if (this.userScrolledUp) {
+              this.newMessageCount++;
+              this.showNewMessageButton = true;
+            } else {
+              this.shouldScrollToBottom = true;
+              setTimeout(() => this.markLastMessageAsRead(), 300);
+            }
           } else {
-            this.shouldScrollToBottom = true;
-            setTimeout(() => this.markLastMessageAsRead(), 300);
+            console.log('⚠️ Duplicate message ignored:', message.messageId);
           }
         }
       });
 
+    // FIX: Add duplicate check for sent messages too
     this.chatService.messageSent$
       .pipe(takeUntil(this.destroy$))
       .subscribe((message) => {
-        this.addMessageToView(message, true);
-        this.shouldScrollToBottom = true;
+        // ✅ CHECK FOR DUPLICATES
+        const messageExists = this.messages.some(
+          m => Number(m.messageId) === Number(message.messageId)
+        );
+
+        if (!messageExists) {
+          console.log('✅ Adding new sent message:', message.messageId);
+          this.addMessageToView(message, true);
+          this.shouldScrollToBottom = true;
+        } else {
+          console.log('⚠️ Duplicate sent message ignored:', message.messageId);
+        }
       });
 
     this.chatService.messageStatusUpdated$
@@ -677,6 +652,7 @@ async acceptIncomingCall(): Promise<void> {
       });
   }
 
+  // ... rest of your methods remain the same ...
   loadFriendsForGroup(): void {
     this.chatService
       .getFriendsList()
@@ -700,13 +676,11 @@ async acceptIncomingCall(): Promise<void> {
     this.conversationId = contact.conversationId;
     this.currentChatUserId = contact.userId || null;
     this.showChat = true;
-    this.messages = [];
+    this.messages = []; // Clear messages when switching chats
     this.userScrolledUp = false;
     this.showNewMessageButton = false;
     this.newMessageCount = 0;
     this.firstUnreadMessageId = null;
-
-    // Don't clear searchTargetMessageId here - it's needed for the scroll
 
     this.loadHistory();
     this.loadGroupDetailsIfGroup();
@@ -719,7 +693,6 @@ async acceptIncomingCall(): Promise<void> {
       .subscribe((history) => {
         this.messages = this.processMessages(history.reverse());
 
-        // Only scroll to bottom if we're NOT trying to scroll to a specific message
         if (!this.searchTargetMessageId) {
           this.shouldScrollToBottom = true;
           this.markLastMessageAsRead();
@@ -825,18 +798,21 @@ async acceptIncomingCall(): Promise<void> {
   }
 
   markLastMessageAsRead(): void {
-    if (
-      this.messages.length > 0 &&
-      this.selectedContact &&
-      this.selectedContact.unreadCount &&
-      this.selectedContact.unreadCount > 0
-    ) {
-      const lastMessage = this.messages[this.messages.length - 1];
-      this.chatService.markConversationRead(
-        this.conversationId!,
-        Number(lastMessage.messageId)
-      );
-    }
+    if (this.messages.length === 0 || !this.conversationId) return;
+
+    const lastMessage = this.messages[this.messages.length - 1];
+    
+    // Skip if the last message is from the current user (no need to mark own messages as read)
+    if (lastMessage.fromUserId === this.currentUser?.userId) return;
+
+    // Mark conversation as read regardless of unreadCount
+    // This ensures even if the count is wrong, we still mark it as read
+    this.chatService.markConversationRead(
+      this.conversationId,
+      Number(lastMessage.messageId)
+    );
+
+    console.log(`✅ Marked conversation ${this.conversationId} as read up to message ${lastMessage.messageId}`);
   }
 
   onScroll(scrollTop: number): void {
@@ -845,12 +821,20 @@ async acceptIncomingCall(): Promise<void> {
     const clientHeight = container.clientHeight;
     const scrollBottom = scrollHeight - scrollTop - clientHeight;
 
-    // If scrolled up more than 100px from the bottom
     this.userScrolledUp = scrollBottom > 100;
 
     if (!this.userScrolledUp) {
       this.showNewMessageButton = false;
       this.newMessageCount = 0;
+      
+      // ✅ Mark messages as read when user scrolls to bottom
+      if (this.messages.length > 0 && this.selectedContact) {
+        const lastMessage = this.messages[this.messages.length - 1];
+        // Only mark if the last message is from the other person (not from current user)
+        if (lastMessage.fromUserId !== this.currentUser?.userId) {
+          this.markLastMessageAsRead();
+        }
+      }
     }
   }
 
@@ -861,7 +845,7 @@ async acceptIncomingCall(): Promise<void> {
           `[data-message-id="${this.firstUnreadMessageId}"]`
         );
       if (targetElement) {
-        this.targetScrollPosition = targetElement.offsetTop - 50; // 50px offset for visibility
+        this.targetScrollPosition = targetElement.offsetTop - 50;
         this.shouldScrollToTarget = true;
         this.userScrolledUp = false;
         this.showNewMessageButton = false;
@@ -873,6 +857,11 @@ async acceptIncomingCall(): Promise<void> {
       this.showNewMessageButton = false;
       this.newMessageCount = 0;
     }
+
+    // ✅ Mark messages as read after scrolling to bottom
+    setTimeout(() => {
+      this.markLastMessageAsRead();
+    }, 500);
   }
 
   scrollToPosition(position: number): void {
@@ -886,7 +875,7 @@ async acceptIncomingCall(): Promise<void> {
           `[data-message-id="${messageId}"]`
         );
       if (targetElement) {
-        const targetPosition = targetElement.offsetTop - 50; // 50px offset for visibility
+        const targetPosition = targetElement.offsetTop - 50;
         this.scrollToPosition(targetPosition);
       }
     }
@@ -896,9 +885,9 @@ async acceptIncomingCall(): Promise<void> {
     this.showEmojiPicker = !this.showEmojiPicker;
   }
 
-  // --- Modals Logic ---
-
-  // Media Upload
+  // All other methods remain exactly the same...
+  // [Include all remaining methods from your original file]
+  
   onMediaSelected(file: File): void {
     this.selectedMediaFile = file;
     this.mediaCaption = this.messageText;
@@ -962,7 +951,6 @@ async acceptIncomingCall(): Promise<void> {
       });
   }
 
-  // Media Viewer
   openMediaViewer(url: string, type: 'image' | 'video'): void {
     this.viewerMediaUrl = url;
     this.viewerMediaType = type;
@@ -975,7 +963,6 @@ async acceptIncomingCall(): Promise<void> {
     this.viewerMediaType = null;
   }
 
-  // Create Group
   openCreateGroupModal(): void {
     this.showCreateGroupModal = true;
     this.groupName = '';
@@ -1013,9 +1000,6 @@ async acceptIncomingCall(): Promise<void> {
       .subscribe({
         next: (response) => {
           this.closeCreateGroupModal();
-          // The sidebar component will reload contacts and the new group will appear
-          // Optionally, auto-open the new chat
-          // this.openChat({ conversationId: response.conversationId, isGroup: true, displayName: this.groupName, unreadCount: 0 });
         },
         error: (err) => {
           console.error('Group creation failed:', err);
@@ -1023,7 +1007,6 @@ async acceptIncomingCall(): Promise<void> {
       });
   }
 
-  // Group Details
   openGroupDetails(): void {
     if (this.selectedContact?.isGroup) {
       this.loadGroupDetailsIfGroup();
@@ -1045,7 +1028,6 @@ async acceptIncomingCall(): Promise<void> {
   leaveGroup(): void {
     if (!this.conversationId) return;
 
-    // Load up-to-date group details (we already have the API)
     this.chatService
       .getGroupDetails(this.conversationId)
       .pipe(takeUntil(this.destroy$))
@@ -1056,18 +1038,15 @@ async acceptIncomingCall(): Promise<void> {
         );
 
         if (!currentUser) {
-          // Should not happen, but fallback to direct leave
           this.performLeaveGroup();
           return;
         }
 
-        // If user is NOT admin → directly leave
         if (!currentUser.isAdmin) {
           this.performLeaveGroup();
           return;
         }
 
-        // If user IS admin → open Transfer Admin modal
         this.openTransferAdminModal(details);
       });
   }
@@ -1075,7 +1054,6 @@ async acceptIncomingCall(): Promise<void> {
   openTransferAdminModal(details: GroupDetails): void {
     const currentUserId = this.authService.getCurrentUser()?.userId!;
 
-    // Members who can be assigned new admin (everyone except current user)
     this.transferableMembers = details.members.filter(
       (m) => m.userId !== currentUserId
     );
@@ -1083,16 +1061,13 @@ async acceptIncomingCall(): Promise<void> {
     this.selectedNewAdminId = null;
     this.showTransferAdminModal = true;
 
-    // Store it in case you need it later
     this.currentGroupDetails = details;
   }
 
-  // handler: user clicked a member inside modal (bound to selectNewAdmin)
   onSelectNewAdmin(userId: string) {
     this.selectedNewAdminId = userId;
   }
 
-  // handler: user clicked confirm "Assign & Leave" (bound to confirmTransferAdmin)
   onConfirmTransferAdmin(): void {
     if (!this.selectedNewAdminId || !this.conversationId) return;
 
@@ -1102,23 +1077,14 @@ async acceptIncomingCall(): Promise<void> {
       .subscribe({
         next: () => {
           this.showTransferAdminModal = false;
-
-          // After transferring admin → leave group
           this.performLeaveGroup();
         },
-        error: () => {
-          // this.showError("Failed to assign new admin. Try again.");
-        },
+        error: () => {},
       });
   }
 
-  private refreshGroupDetailsAfterTransfer(): void {
-    // optional: re-fetch group details to reflect new admin in UI
-    // Implement according to your existing method for fetching group details
-    // this.loadCurrentGroupDetails(); // replace with your actual method
-  }
+  private refreshGroupDetailsAfterTransfer(): void {}
 
-  // performLeaveGroup extracted from your original code
   performLeaveGroup(): void {
     if (
       !confirm(
@@ -1139,12 +1105,10 @@ async acceptIncomingCall(): Promise<void> {
         },
         error: (err) => {
           console.error('Failed to leave group:', err);
-          // this.showError('Failed to leave group. Please try again.');
         },
       });
   }
 
-  // handler for cancel modal (bound to cancelTransferAdmin output)
   onCancelTransferAdmin(): void {
     this.showTransferAdminModal = false;
     this.selectedNewAdminId = null;
@@ -1158,7 +1122,7 @@ async acceptIncomingCall(): Promise<void> {
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: () => {
-          this.loadGroupDetailsIfGroup(); // Reload details to update member list
+          this.loadGroupDetailsIfGroup();
         },
         error: (err) => {
           console.error('Failed to remove member:', err);
@@ -1166,7 +1130,6 @@ async acceptIncomingCall(): Promise<void> {
       });
   }
 
-  // Add Member
   openAddMemberModal(): void {
     if (!this.currentGroupDetails) return;
 
@@ -1193,7 +1156,7 @@ async acceptIncomingCall(): Promise<void> {
       .subscribe({
         next: () => {
           this.closeAddMemberModal();
-          this.loadGroupDetailsIfGroup(); // Reload details to update member list
+          this.loadGroupDetailsIfGroup();
         },
         error: (err) => {
           console.error('Failed to add member:', err);
@@ -1201,7 +1164,6 @@ async acceptIncomingCall(): Promise<void> {
       });
   }
 
-  // Edit Group
   openEditGroupModal(): void {
     if (!this.currentGroupDetails) return;
 
@@ -1236,7 +1198,6 @@ async acceptIncomingCall(): Promise<void> {
     this.deleteConfirmationText = '';
   }
 
-  // In the onDeleteMessage method:
   onDeleteMessage(event: {
     messageId: number;
     deleteForEveryone: boolean;
@@ -1244,19 +1205,15 @@ async acceptIncomingCall(): Promise<void> {
     this.chatService.deleteMessage(event.messageId, event.deleteForEveryone);
   }
 
-  // In the onEditMessage method:
   onEditMessage(event: { messageId: number; newBody: string }): void {
     this.chatService.editMessage(event.messageId, event.newBody);
   }
 
-  // In the onForwardMessage method:
   onForwardMessage(message: Message): void {
-    // Load all contacts for forwarding
     this.chatService
       .getContacts()
       .pipe(takeUntil(this.destroy$))
       .subscribe((contacts) => {
-        // Exclude current conversation
         this.forwardContacts = contacts.filter(
           (c) => c.conversationId !== this.conversationId
         );
@@ -1278,13 +1235,10 @@ async acceptIncomingCall(): Promise<void> {
         contact.conversationId
       );
 
-      // Close modal
       this.closeForwardModal();
 
-      // ⭐️ Automatically open the forwarded chat
       this.openChat(contact);
 
-      // ⭐️ Scroll to bottom
       setTimeout(() => {
         this.shouldScrollToBottom = true;
         this.cdr.detectChanges();
@@ -1312,7 +1266,7 @@ async acceptIncomingCall(): Promise<void> {
           this.showChat = false;
           this.conversationId = null;
           this.messages = [];
-        this.success('Group deleted successfully.');
+          this.success('Group deleted successfully.');
         },
         error: (err) => {
           console.error('Failed to delete group:', err);
@@ -1323,6 +1277,7 @@ async acceptIncomingCall(): Promise<void> {
         },
       });
   }
+
   openSearchModal(): void {
     this.showSearchModal = true;
   }
@@ -1334,10 +1289,8 @@ async acceptIncomingCall(): Promise<void> {
   async onMessageSelectedFromSearch(result: SearchResultDto): Promise<void> {
     console.log('Search result selected:', result);
 
-    // Get contacts from sidebar component
     let targetContact = this.findContactByConversationId(result.conversationId);
 
-    // If contact not found, reload contacts and try again
     if (!targetContact) {
       console.log('Contact not found in current list, reloading contacts...');
       await this.loadContactByConversationId(result.conversationId);
@@ -1349,17 +1302,12 @@ async acceptIncomingCall(): Promise<void> {
       return;
     }
 
-    // Set the target message ID before opening chat
     this.searchTargetMessageId = result.messageId;
 
-    // Close search modal
     this.closeSearchModal();
 
-    // Open the chat
     this.openChat(targetContact);
 
-    // Wait for messages to load, then scroll to target
-    // Use a longer delay and retry mechanism
     this.waitForMessagesAndScroll(result.messageId);
   }
 
@@ -1367,8 +1315,8 @@ async acceptIncomingCall(): Promise<void> {
     messageId: number,
     attempt: number = 0
   ): void {
-    const maxAttempts = 15; // Increased attempts
-    const delay = 300; // Slightly longer delay
+    const maxAttempts = 15;
+    const delay = 300;
 
     if (attempt >= maxAttempts) {
       console.error('Could not find message after', maxAttempts, 'attempts');
@@ -1376,19 +1324,17 @@ async acceptIncomingCall(): Promise<void> {
         'Available messages:',
         this.messages.map((m) => m.messageId)
       );
-      this.searchTargetMessageId = null; // Clear target on failure
+      this.searchTargetMessageId = null;
       return;
     }
 
     setTimeout(() => {
-      // Check if messages are loaded
       if (this.messages.length === 0) {
         console.log('Messages not loaded yet, retrying...', attempt + 1);
         this.waitForMessagesAndScroll(messageId, attempt + 1);
         return;
       }
 
-      // Check if target message exists in messages array
       const messageFound = this.messages.find(
         (m) => Number(m.messageId) === messageId
       );
@@ -1399,13 +1345,10 @@ async acceptIncomingCall(): Promise<void> {
           messageId
         );
 
-        // Force change detection to ensure DOM is updated
         this.cdr.detectChanges();
 
-        // Give DOM time to render after change detection
         setTimeout(() => {
           this.scrollToMessage(messageId);
-          // Clear the target after successful scroll
           setTimeout(() => {
             this.searchTargetMessageId = null;
           }, 3000);
@@ -1426,9 +1369,7 @@ async acceptIncomingCall(): Promise<void> {
     }, delay);
   }
 
-  // 4. Implement the findContactByConversationId method:
   private findContactByConversationId(conversationId: string): Contact | null {
-    // Access contacts from sidebar component
     if (!this.sidebarComp || !this.sidebarComp.contacts) {
       console.error('Sidebar component or contacts not available');
       return null;
@@ -1440,16 +1381,13 @@ async acceptIncomingCall(): Promise<void> {
     return contact || null;
   }
 
-  // 5. Implement the loadContactByConversationId method:
   private async loadContactByConversationId(
     conversationId: string
   ): Promise<void> {
     return new Promise((resolve) => {
-      // Tell sidebar to reload its contacts
       if (this.sidebarComp) {
         this.sidebarComp.loadContacts();
 
-        // Wait a bit for the contacts to load
         setTimeout(() => {
           resolve();
         }, 300);
@@ -1459,24 +1397,22 @@ async acceptIncomingCall(): Promise<void> {
     });
   }
 
-  // 6. Update the getContactsForSearch method to actually return contacts:
   getContactsForSearch(): Contact[] {
-    // Get contacts from sidebar component
     if (this.sidebarComp && this.sidebarComp.contacts) {
       return this.sidebarComp.contacts;
     }
     return [];
   }
-  success(msg: string) {
-  Swal.fire({
-    icon: 'success',
-    title: 'Success',
-    text: msg,
-    timer: 2000,
-    showConfirmButton: false
-  });
-}
 
+  success(msg: string) {
+    Swal.fire({
+      icon: 'success',
+      title: 'Success',
+      text: msg,
+      timer: 2000,
+      showConfirmButton: false
+    });
+  }
 
   updateGroupInfo(): void {
     if (!this.conversationId || !this.editGroupName) return;
@@ -1532,6 +1468,5 @@ async acceptIncomingCall(): Promise<void> {
     this.isUploadingGroupPhoto = false;
     this.closeEditGroupModal();
     this.loadGroupDetailsIfGroup();
-    // The sidebar component will update automatically via SignalR
   }
 }

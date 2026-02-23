@@ -1,0 +1,77 @@
+.auth-container {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, #075e54, #128c7e);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.auth-card {
+  background: white;
+  width: 320px;
+  padding: 25px;
+  border-radius: 16px;
+  box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+  text-align: center;
+}
+
+.slider {
+  display: flex;
+  background: #eee;
+  border-radius: 25px;
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+
+.slider-btn {
+  flex: 1;
+  padding: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: 0.3s;
+}
+
+.slider-btn.active {
+  background: #075e54;
+  color: white;
+}
+
+.form h2 {
+  margin-bottom: 15px;
+}
+
+.form input {
+  width: 100%;
+  padding: 10px;
+  margin: 6px 0;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+}
+
+.form button {
+  width: 100%;
+  padding: 10px;
+  margin-top: 10px;
+  border-radius: 8px;
+  border: none;
+  background: #075e54;
+  color: white;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.form button:hover {
+  background: #128c7e;
+}
+
+.error {
+  color: red;
+  margin-top: 10px;
+}
+
+.success {
+  color: green;
+  margin-top: 10px;
+}

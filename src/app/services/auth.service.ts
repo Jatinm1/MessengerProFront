@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { BehaviorSubject, Observable } from 'rxjs';
-import { tap } from 'rxjs/operators';
+import { BehaviorSubject, Observable, throwError } from 'rxjs';
+import { catchError, tap } from 'rxjs/operators';
 import { LoginResponse, User } from '../models/chat.models';
 import { environment } from '../../env/env';
 
@@ -56,6 +56,14 @@ export class AuthService {
     );
   }
 
+  register(userName: string, displayName: string, password: string) {
+  return this.http.post<any>(`${this.apiBase}/auth/register`, {
+    userName,
+    displayName,
+    password
+  });
+}
+
   getToken(): string | null {
     return this.tokenSubject.value;
   }
@@ -70,19 +78,28 @@ export class AuthService {
   }
 
   logout(): Observable<any> {
-    return this.http.post(`${this.apiBase}/auth/logout`, {})
-      .pipe(
-        tap(() => {
-          // Clear cookies
-          this.deleteCookie('auth_token');
-          this.deleteCookie('current_user');
-          
-          // Clear subjects
-          this.currentUserSubject.next(null);
-          this.tokenSubject.next(null);
-        })
-      );
-  }
+  return this.http.post(`${this.apiBase}/auth/logout`, {})
+    .pipe(
+      tap(() => this.clearAuthData()),
+      catchError(err => {
+        this.clearAuthData(); // ensure cleanup
+        return throwError(() => err);
+      })
+    );
+}
+
+forceLogout(): void {
+  this.deleteCookie('auth_token');
+  this.deleteCookie('current_user');
+  this.currentUserSubject.next(null);
+  this.tokenSubject.next(null);
+}
+private clearAuthData() {
+  this.deleteCookie('auth_token');
+  this.deleteCookie('current_user');
+  this.currentUserSubject.next(null);
+  this.tokenSubject.next(null);
+}
 
   isAuthenticated(): boolean {
     return !!this.getToken();

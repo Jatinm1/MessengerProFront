@@ -72,15 +72,15 @@ export class MainLayoutComponent implements OnInit {
   }
 
   logout(): void {
-    this.chatService.disconnectFromHub();
-
-    this.authService.logout().subscribe({
-      next: () => {
-        this.router.navigate(['/login']);
-      },
-      error: () => {
-        this.router.navigate(['/login']); // still logout UI even if API fails
-      }
-    });
-  }
+  this.authService.logout().subscribe({
+    next: () => {
+      this.chatService.disconnectFromHub();
+this.router.navigateByUrl('/auth', { replaceUrl: true });    },
+    error: () => {
+      this.chatService.disconnectFromHub();
+      this.router.navigate(['/auth']);
+      this.router.navigateByUrl('/auth', { replaceUrl: true });
+    }
+  });
+}
 }

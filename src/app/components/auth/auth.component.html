@@ -1,0 +1,45 @@
+<div class="auth-container">
+  <div class="auth-card">
+
+    <div class="slider">
+      <div 
+        class="slider-btn" 
+        [class.active]="isLoginMode"
+        (click)="isLoginMode = true">
+        Login
+      </div>
+
+      <div 
+        class="slider-btn" 
+        [class.active]="!isLoginMode"
+        (click)="isLoginMode = false">
+        Sign Up
+      </div>
+    </div>
+
+    <!-- LOGIN FORM -->
+    <div *ngIf="isLoginMode" class="form">
+      <h2>Welcome Back</h2>
+
+      <input [(ngModel)]="loginUserName" placeholder="Username" />
+      <input [(ngModel)]="loginPassword" type="password" placeholder="Password" />
+
+      <button (click)="login()">Login</button>
+    </div>
+
+    <!-- REGISTER FORM -->
+    <div *ngIf="!isLoginMode" class="form">
+      <h2>Create Account</h2>
+
+      <input [(ngModel)]="registerUserName" placeholder="Username" />
+      <input [(ngModel)]="registerDisplayName" placeholder="Display Name" />
+      <input [(ngModel)]="registerPassword" type="password" placeholder="Password" />
+
+      <button (click)="register()">Sign Up</button>
+    </div>
+
+    <div *ngIf="errorMessage" class="error">{{ errorMessage }}</div>
+    <div *ngIf="successMessage" class="success">{{ successMessage }}</div>
+
+  </div>
+</div>

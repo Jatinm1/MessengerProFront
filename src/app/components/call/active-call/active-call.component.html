@@ -1,19 +1,27 @@
 <!-- src/app/components/call/active-call/active-call.component.html -->
 
 <div class="active-call-container" (mousemove)="onMouseMove()">
-  
+
   <!-- Remote Video/Avatar (Main) -->
   <div class="remote-video-container">
-    <video #remoteVideo 
-           *ngIf="isVideoCall() && !remoteIsVideoOff"
-           autoplay 
+
+    <!--
+      FIX: *ngIf has been REMOVED from <video>.
+      *ngIf destroys and recreates the DOM element when the condition changes.
+      When the element is recreated, @ViewChild gives a new reference but
+      remoteStream$ never re-emits, so srcObject is never set on the new element.
+      Solution: always keep the <video> in the DOM and toggle visibility with CSS.
+    -->
+    <video #remoteVideo
+           autoplay
            playsinline
+           [style.display]="shouldShowRemoteVideo() ? 'block' : 'none'"
            class="remote-video"></video>
-    
-    <div *ngIf="!isVideoCall() || remoteIsVideoOff" class="video-placeholder">
+
+    <div [style.display]="shouldShowRemoteVideo() ? 'none' : 'flex'" class="video-placeholder">
       <div class="avatar-large">
-        <img *ngIf="remoteParticipant.photoUrl" 
-             [src]="remoteParticipant.photoUrl" 
+        <img *ngIf="remoteParticipant.photoUrl"
+             [src]="remoteParticipant.photoUrl"
              alt="avatar">
         <span *ngIf="!remoteParticipant.photoUrl">
           {{ getInitials(remoteParticipant.displayName) }}
@@ -39,17 +47,22 @@
 
   <!-- Local Video (Picture-in-Picture) -->
   <div class="local-video-container" *ngIf="isVideoCall()">
-    <video #localVideo 
-           *ngIf="!isVideoOff"
-           autoplay 
-           muted 
+    <!--
+      FIX: Same issue — *ngIf removed from local <video>.
+      Use [style.display] so the element stays in the DOM and @ViewChild
+      always points to the same element with its srcObject intact.
+    -->
+    <video #localVideo
+           autoplay
+           muted
            playsinline
+           [style.display]="!isVideoOff ? 'block' : 'none'"
            class="local-video"></video>
-    
-    <div *ngIf="isVideoOff" class="video-placeholder-small">
+
+    <div [style.display]="isVideoOff ? 'flex' : 'none'" class="video-placeholder-small">
       <div class="avatar-small">
-        <img *ngIf="localParticipant.photoUrl" 
-             [src]="localParticipant.photoUrl" 
+        <img *ngIf="localParticipant.photoUrl"
+             [src]="localParticipant.photoUrl"
              alt="avatar">
         <span *ngIf="!localParticipant.photoUrl">
           {{ getInitials(localParticipant.displayName) }}
@@ -83,9 +96,9 @@
   <!-- Call Controls -->
   <div class="call-controls" [class.show]="showControls">
     <div class="controls-wrapper">
-      
+
       <!-- Mute/Unmute -->
-      <button class="control-btn" 
+      <button class="control-btn"
               [class.active]="isMuted"
               (click)="onToggleAudio()"
               [title]="isMuted ? 'Unmute' : 'Mute'">
@@ -103,8 +116,8 @@
       </button>
 
       <!-- Video On/Off -->
-      <button *ngIf="isVideoCall()" 
-              class="control-btn" 
+      <button *ngIf="isVideoCall()"
+              class="control-btn"
               [class.active]="isVideoOff"
               (click)="onToggleVideo()"
               [title]="isVideoOff ? 'Turn on camera' : 'Turn off camera'">
@@ -119,7 +132,7 @@
       </button>
 
       <!-- Screen Share -->
-      <button class="control-btn" 
+      <button class="control-btn"
               [class.active]="isScreenSharing"
               (click)="onToggleScreenShare()"
               [title]="isScreenSharing ? 'Stop sharing' : 'Share screen'">
@@ -131,7 +144,7 @@
       </button>
 
       <!-- End Call -->
-      <button class="control-btn end-call-btn" 
+      <button class="control-btn end-call-btn"
               (click)="onEndCall()"
               title="End call">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
