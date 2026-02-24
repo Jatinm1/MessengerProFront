@@ -137,11 +137,7 @@
   opacity: 1;
 }
 
-.contact .info {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex: 1;
+.contact .info {  
   min-width: 0;
 }
 
@@ -152,6 +148,14 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0; /* IMPORTANT */
+}
+.name-text {
+  flex: 1;              /* take available space */
+  min-width: 0;         /* allow shrinking */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .group-icon {

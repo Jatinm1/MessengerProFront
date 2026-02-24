@@ -38,12 +38,17 @@ import { ChatService } from '../../../services/chat.service';
           </div>
           <div class="info">
             <div class="name">
-              <span class="group-icon" *ngIf="contact.isGroup">👥</span>
-              {{ contact.displayName }}
-              <span class="unread-badge" *ngIf="contact.unreadCount && contact.unreadCount > 0">
-                {{ contact.unreadCount }}
-              </span>
-            </div>
+  <span class="group-icon" *ngIf="contact.isGroup">👥</span>
+
+  <span class="name-text">
+    {{ contact.displayName }}
+  </span>
+
+  <span class="unread-badge"
+        *ngIf="contact.unreadCount && contact.unreadCount > 0">
+    {{ contact.unreadCount }}
+  </span>
+</div>
             <div class="preview">{{ contact.lastMessage }}</div>
           </div>
           <div class="time">{{ formatLastMessageTime(contact.lastMessageTime) }}</div>
@@ -205,15 +210,11 @@ import { ChatService } from '../../../services/chat.service';
   box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
 }
 
-.info {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex: 1;
+.info {  
   min-width: 0;
 }
 
-.name {
+.contact .name {
   font-weight: 600;
   color: #1e293b;
   font-size: 0.95rem;
@@ -223,6 +224,13 @@ import { ChatService } from '../../../services/chat.service';
   line-height: 1.4;
 }
 
+.name-text {
+  flex: 1;              /* take available space */
+  min-width: 0;         /* allow shrinking */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .group-icon {
   font-size: 0.9rem;
   opacity: 0.8;
