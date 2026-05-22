@@ -145,6 +145,7 @@ export class FriendsComponent implements OnInit, OnDestroy {
         this.receivedRequests = requests;
         this.receivedRequestsLoaded = true;
         this.updateComputedProperties();
+        this.updateSearchResultsStatus();
       });
 
     this.chatService.friendsListUpdated$
@@ -166,9 +167,6 @@ export class FriendsComponent implements OnInit, OnDestroy {
       .subscribe(request => {
         console.log('🔔 [REALTIME] Friend request received:', request);
         this.showSuccess('New friend request received!');
-        
-        // Always reload received requests when a new request is received
-        this.loadReceivedRequests();
       });
 
     this.chatService.friendRequestSent$
@@ -176,9 +174,6 @@ export class FriendsComponent implements OnInit, OnDestroy {
       .subscribe((data) => {
         console.log('📤 [REALTIME] Friend request sent confirmation:', data);
         this.showSuccess('Friend request sent!');
-        
-        // Always reload sent requests when a new request is sent
-        this.loadSentRequests();
       });
 
     // ========================================
@@ -190,13 +185,12 @@ export class FriendsComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe(data => {
         console.log('✅ [REALTIME] Your friend request was accepted:', data);
-        
+
         if (data.acceptedByName) {
           this.showSuccess(`${data.acceptedByName} accepted your friend request!`);
         }
-        
-        // Always reload sent requests when your request is accepted
-        this.loadSentRequests();
+
+        this.updateSearchResultsStatus();
       });
 
     // When YOU accept someone's request (you are the receiver)
@@ -205,9 +199,6 @@ export class FriendsComponent implements OnInit, OnDestroy {
       .subscribe(data => {
         console.log('✅ [REALTIME] You accepted a friend request:', data);
         this.showSuccess('Friend request accepted!');
-        
-        // Always reload received requests when you accept a request
-        this.loadReceivedRequests();
       });
 
     // ========================================
@@ -219,9 +210,7 @@ export class FriendsComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe((data) => {
         console.log('❌ [REALTIME] Your friend request was rejected:', data);
-        
-        // Always reload sent requests when your request is rejected
-        this.loadSentRequests();
+        this.updateSearchResultsStatus();
       });
 
     // When YOU reject someone's request (you are the receiver)
@@ -229,9 +218,6 @@ export class FriendsComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe(data => {
         console.log('❌ [REALTIME] You rejected a friend request:', data);
-        
-        // Always reload received requests when you reject a request
-        this.loadReceivedRequests();
       });
 
     // ========================================

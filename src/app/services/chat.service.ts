@@ -56,6 +56,11 @@ export class ChatService {
   friendRequestError$ = new Subject<string>();
   sentRequestsUpdated$ = new Subject<FriendRequest[]>();
   receivedRequestsUpdated$ = new Subject<FriendRequest[]>();
+
+  // ========================================
+  // CONTACT UPDATE EVENTS
+  // ========================================
+  contactUpdated$ = new Subject<any>();
   
   // ========================================
   // GROUP EVENTS
@@ -271,6 +276,14 @@ export class ChatService {
     this.hubConnection.on('friendRequestError', (error: string) => {
       console.error('❌ Friend Request Error:', error);
       this.friendRequestError$.next(error);
+    });
+
+    // ========================================
+    // CONTACT UPDATE EVENTS
+    // ========================================
+    this.hubConnection.on('contactUpdated', (contactUpdate: any) => {
+      console.log('📬 Contact Updated:', contactUpdate);
+      this.contactUpdated$.next(contactUpdate);
     });
 
     // ========================================

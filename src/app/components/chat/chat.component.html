@@ -14,9 +14,7 @@
   <div class="chat-container">
         <app-group
       [selectedContact]="selectedContact"
-      (openGroupDetails)="openGroupDetails()"
-      (audioCallClicked)="initiateAudioCall()"
-      (videoCallClicked)="initiateVideoCall()">
+      (openGroupDetails)="openGroupDetails()">
     </app-group>
 
    <app-messages
@@ -107,33 +105,5 @@
     (closeModal)="closeSearchModal()"
     (messageSelected)="onMessageSelectedFromSearch($event)">
   </app-search-modal>
-
-   <app-incoming-call
-    *ngIf="showIncomingCall && incomingCallOffer"
-    [callOffer]="incomingCallOffer"
-    (accept)="acceptIncomingCall()"
-    (reject)="rejectIncomingCall()">
-  </app-incoming-call>
-
-  <!-- Outgoing Call UI -->
-  <app-outgoing-call
-    *ngIf="showOutgoingCall && currentCall && remoteCallParticipant"
-    [callSession]="currentCall"
-    [recipient]="remoteCallParticipant"
-    (cancelCall)="cancelOutgoingCall()">
-  </app-outgoing-call>
-
-  <!-- Active Call UI -->
-  <app-active-call
-    *ngIf="showActiveCall && currentCall && remoteCallParticipant && localCallParticipant"
-    [callSession]="currentCall"
-    [remoteParticipant]="remoteCallParticipant"
-    [localParticipant]="localCallParticipant"
-    (endCall)="endActiveCall()"
-    (toggleAudio)="toggleCallAudio()"
-    (toggleVideo)="toggleCallVideo()"
-    (toggleScreenShare)="toggleCallScreenShare()">
-  </app-active-call>
-
 
 </div>

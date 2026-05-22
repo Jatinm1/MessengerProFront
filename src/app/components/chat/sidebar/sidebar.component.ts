@@ -328,13 +328,38 @@ export class SidebarComponent implements OnInit, OnDestroy {
   }
 
   private setupSignalRListeners(): void {
+    // 📬 Listen for contact updates (delta updates - only changed contact)
+    this.chatService.contactUpdated$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((contactUpdate) => {
+        console.log('📬 [Sidebar] Updating contact:', contactUpdate.conversationId);
+        const index = this.contacts.findIndex(
+          (c) => c.conversationId === contactUpdate.conversationId
+        );
+        if (index !== -1) {
+          // Update only this contact with new data
+          this.contacts[index] = {
+            ...this.contacts[index],
+            ...contactUpdate,
+          };
+          console.log('✅ Contact updated:', this.contacts[index].displayName);
+        }
+      });
+
+    // Message events now use contactUpdated instead of loadContacts()
     this.chatService.messageReceived$
       .pipe(takeUntil(this.destroy$))
-      .subscribe(() => this.loadContacts());
+      .subscribe(() => {
+        // No need to loadContacts() - backend sends contactUpdated event
+        console.log('📨 Message received - waiting for contactUpdated event');
+      });
 
     this.chatService.messageSent$
       .pipe(takeUntil(this.destroy$))
-      .subscribe(() => this.loadContacts());
+      .subscribe(() => {
+        // No need to loadContacts() - backend sends contactUpdated event
+        console.log('📤 Message sent - waiting for contactUpdated event');
+      });
 
     this.chatService.friendsListUpdated$
       .pipe(takeUntil(this.destroy$))

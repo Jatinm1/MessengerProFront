@@ -131,6 +131,7 @@ export interface UserProfile {
   lastSeenUtc?: string;
   isOnline: boolean;
   areFriends?: boolean;
+  reqPending?: boolean;
 }
 
 export interface UpdateProfileRequest {

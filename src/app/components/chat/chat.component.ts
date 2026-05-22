@@ -1,9 +1,3 @@
-// Chat Component - FIXED VERSION
-// Key changes:
-// 1. Added duplicate message check in messageReceived$ handler
-// 2. Ensured messageSent$ also checks for duplicates
-// 3. Better conversation matching logic
-
 import {
   Component,
   OnInit,
@@ -34,12 +28,6 @@ import { ModalsComponent } from './modals/modals.component';
 import { SidebarComponent } from './sidebar/sidebar.component';
 import { SearchModalComponent } from './modals/search-modal/search-modal.component';
 import Swal from 'sweetalert2';
-import { CallService } from '../../services/call.service';
-import { WebRTCService } from '../../services/webrtc.service';
-import { CallSession, CallOffer, CallParticipant, CallType } from '../../models/call.models';
-import { ActiveCallComponent } from '../call/active-call/active-call.component';
-import { IncomingCallComponent } from '../call/incoming-call/incoming-call.component';
-import { OutgoingCallComponent } from '../call/outgoing-call/outgoing-call.component';
 
 interface MessageWithDate extends Message {
   dateLabel?: string;
@@ -57,9 +45,6 @@ interface MessageWithDate extends Message {
     MessagesComponent,
     ModalsComponent,
     SearchModalComponent,
-    IncomingCallComponent,
-    OutgoingCallComponent,
-    ActiveCallComponent
   ],
   templateUrl: './chat.component.html',
   styleUrls: ['./chat.component.css'],
@@ -76,13 +61,6 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
   private userScrolledUp = false;
   private listenersSetup = false;
 
-  currentCall: CallSession | null = null;
-  incomingCallOffer: CallOffer | null = null;
-  showIncomingCall = false;
-  showOutgoingCall = false;
-  showActiveCall = false;
-  localCallParticipant: CallParticipant | null = null;
-  remoteCallParticipant: CallParticipant | null = null;
   showSearchModal = false;
   searchTargetMessageId: number | null = null;
 
@@ -151,9 +129,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     private authService: AuthService,
     private chatService: ChatService,
     private router: Router,
-    private cdr: ChangeDetectorRef,
-    private callService: CallService,
-    private webrtcService: WebRTCService
+    private cdr: ChangeDetectorRef
   ) {}
 
   @HostListener('document:click', ['$event'])
@@ -185,7 +161,6 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
 
       this.loadFriendsForGroup();
       this.setupSignalRListeners();
-      this.setupCallListeners();      
 
       const navigation = this.router.getCurrentNavigation();
       const state = navigation?.extras?.state || window.history.state;
@@ -202,35 +177,46 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
           this.openChat(tempContact);
         }, 200);
       }
-    } catch (error) {
-      console.error('Failed to connect to chat hub:', error);
-    }
-
-    try {
-      await this.chatService.connectToHub();
-      console.log('✅ SignalR Hub Connected');
-
-      this.loadFriendsForGroup();
-      this.setupSignalRListeners();
 
       this.chatService.messageDeleted$
-        .pipe(takeUntil(this.destroy$))
-        .subscribe((data) => {
-          if (data.conversationId === this.conversationId) {
-            this.messages = this.messages.map((msg) => {
-              if (Number(msg.messageId) === data.messageId) {
-                return {
-                  ...msg,
-                  isDeleted: true,
-                  deletedForEveryone: data.deleteForEveryone,
-                  body: null,
-                };
-              }
-              return msg;
-            });
-            this.cdr.markForCheck();
-          }
-        });
+  .pipe(takeUntil(this.destroy$))
+  .subscribe((data) => {
+    if (data.conversationId === this.conversationId) {
+      console.log("hellllllllllllllllllllllllllo",this.currentUser);
+
+      console.log('deletedBy:', data.deletedBy);
+console.log('currentUserId:', this.currentUser?.userId);
+console.log('match:', data.deletedBy === this.currentUser?.userId);
+      
+      if (!data.deleteForEveryone && data.deletedBy !== this.currentUser?.userId) {
+        // ✅ "Delete for me" and I'm not the one who deleted it — do nothing
+        return;
+      }
+
+      if (!data.deleteForEveryone && data.deletedBy === this.currentUser?.userId) {
+        // ✅ "Delete for me" and I deleted it — remove from list entirely
+        this.messages = this.messages.filter(
+          (msg) => Number(msg.messageId) !== data.messageId
+        );
+        this.cdr.markForCheck();
+        return;
+      }
+
+      // ✅ Delete for everyone — show placeholder for all
+      this.messages = this.messages.map((msg) => {
+        if (Number(msg.messageId) === data.messageId) {
+          return {
+            ...msg,
+            isDeleted: true,
+            deletedForEveryone: true,
+            body: null,
+          };
+        }
+        return msg;
+      });
+      this.cdr.markForCheck();
+    }
+  });
 
       this.chatService.messageEdited$
         .pipe(takeUntil(this.destroy$))
@@ -289,9 +275,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
   }
 
   private autoFocusMessageInput(): void {
-    if (this.editingMessageId !== null) {
-      return;
-    }
+    if (this.editingMessageId !== null) return;
 
     const isAnyModalOpen =
       this.showCreateGroupModal ||
@@ -314,269 +298,21 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     this.destroy$.next();
     this.destroy$.complete();
     this.chatService.disconnectFromHub();
-    if (this.currentCall) {
-      this.callService.endCall("declined", "User left chat");
-    }
   }
 
   // ========================================
-  // CALL LISTENERS
-  // ========================================
-  private setupCallListeners(): void {
-    this.callService.incomingCall$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((offer) => {
-        console.log('📞 Incoming call received in component:', offer);
-        this.incomingCallOffer = offer;
-        this.remoteCallParticipant = offer.from;
-        this.localCallParticipant = this.createLocalParticipant();
-        this.showIncomingCall = true;
-        
-        this.showOutgoingCall = false;
-        this.showActiveCall = false;
-        
-        this.cdr.detectChanges();
-      });
-
-    this.callService.currentCall$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((call) => {
-        console.log('🔄 Call state changed:', call);
-        this.currentCall = call;
-        
-        if (call) {
-          switch (call.status) {
-            case 'ringing':
-              if (call.initiatorId === this.currentUser?.userId) {
-                this.showOutgoingCall = true;
-                this.showIncomingCall = false;
-                this.showActiveCall = false;
-              } else {
-                this.showIncomingCall = true;
-                this.showOutgoingCall = false;
-                this.showActiveCall = false;
-              }
-              break;
-              
-            case 'connecting':
-              console.log('⏳ Call connecting...');
-              break;
-              
-            case 'connected':
-              console.log('✅ Call connected, showing active call UI');
-              this.showIncomingCall = false;
-              this.showOutgoingCall = false;
-              this.showActiveCall = true;
-              break;
-              
-            case 'ended':
-            case 'declined':
-            case 'missed':
-            case 'busy':
-              this.showIncomingCall = false;
-              this.showOutgoingCall = false;
-              this.showActiveCall = false;
-              break;
-          }
-        } else {
-          this.showIncomingCall = false;
-          this.showOutgoingCall = false;
-          this.showActiveCall = false;
-        }
-        
-        this.cdr.detectChanges();
-      });
-
-    this.callService.callEnded$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((data) => {
-        console.log('📴 Call ended:', data);
-        
-        this.showIncomingCall = false;
-        this.showOutgoingCall = false;
-        this.showActiveCall = false;
-        this.currentCall = null;
-        this.incomingCallOffer = null;
-        this.remoteCallParticipant = null;
-        
-        if (data.reason.reason === 'declined') {
-          this.showNotification('Call declined', 'info');
-        } else if (data.reason.reason === 'missed') {
-          this.showNotification('Call was not answered', 'warning');
-        } else if (data.reason.reason === 'busy') {
-          this.showNotification('User is busy', 'warning');
-        }
-        
-        this.cdr.detectChanges();
-      });
-
-    this.callService.remoteStateUpdate$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((state) => {
-        console.log('🔄 Remote state update:', state);
-        this.cdr.detectChanges();
-      });
-  }
-
-  async initiateAudioCall(): Promise<void> {
-    if (!this.selectedContact || !this.currentUser) {
-      console.error('❌ No contact selected or no current user');
-      return;
-    }
-    
-    console.log('📞 Initiating audio call to:', this.selectedContact.displayName);
-    
-    try {
-      this.localCallParticipant = this.createLocalParticipant();
-      this.remoteCallParticipant = this.createRemoteParticipant();
-      
-      await this.callService.initiateCall(
-        this.selectedContact.userId!,
-        this.conversationId!,
-        'audio',
-        this.remoteCallParticipant,
-        this.localCallParticipant
-      );
-    } catch (error) {
-      console.error('❌ Error initiating audio call:', error);
-      this.showNotification('Failed to initiate call', 'error');
-    }
-  }
-
-  async initiateVideoCall(): Promise<void> {
-    if (!this.selectedContact || !this.currentUser) {
-      console.error('❌ No contact selected or no current user');
-      return;
-    }
-    
-    console.log('📹 Initiating video call to:', this.selectedContact.displayName);
-    
-    try {
-      this.localCallParticipant = this.createLocalParticipant();
-      this.remoteCallParticipant = this.createRemoteParticipant();
-      
-      await this.callService.initiateCall(
-        this.selectedContact.userId!,
-        this.conversationId!,
-        'video',
-        this.remoteCallParticipant,
-        this.localCallParticipant
-      );
-    } catch (error) {
-      console.error('❌ Error initiating video call:', error);
-      this.showNotification('Failed to initiate call', 'error');
-    }
-  }
-
-  async acceptIncomingCall(): Promise<void> {
-    if (!this.incomingCallOffer) return;
-
-    if (this.currentCall?.status !== 'ringing') {
-      console.warn('⚠️ Accept ignored — call is already', this.currentCall?.status);
-      return;
-    }
-
-    console.log('✅ Accepting incoming call:', this.incomingCallOffer.callId);
-
-    this.showIncomingCall = false;
-    this.cdr.detectChanges();
-
-    try {
-      await this.callService.acceptCall(this.incomingCallOffer);
-    } catch (error) {
-      console.error('❌ Error accepting call:', error);
-    }
-  }
-
-  async rejectIncomingCall(): Promise<void> {
-    if (!this.incomingCallOffer) return;
-    
-    try {
-      await this.callService.rejectCall(this.incomingCallOffer.callId);
-      this.showIncomingCall = false;
-      this.incomingCallOffer = null;
-    } catch (error) {
-      console.error('Error rejecting call:', error);
-    }
-  }
-
-  async cancelOutgoingCall(): Promise<void> {
-    try {
-      await this.callService.endCall('normal', 'Call cancelled');
-    } catch (error) {
-      console.error('Error cancelling call:', error);
-    }
-  }
-
-  async endActiveCall(): Promise<void> {
-    try {
-      await this.callService.endCall("declined", "Call ended by user");
-    } catch (error) {
-      console.error('Error ending call:', error);
-    }
-  }
-
-  toggleCallAudio(): void {
-    this.callService.toggleAudio();
-  }
-
-  toggleCallVideo(): void {
-    this.callService.toggleVideo();
-  }
-
-  async toggleCallScreenShare(): Promise<void> {
-    try {
-      await this.callService.toggleScreenShare();
-    } catch (error) {
-      console.error('Error toggling screen share:', error);
-      this.showNotification('Failed to share screen', 'error');
-    }
-  }
-
-  private createLocalParticipant(): CallParticipant {
-    return {
-      userId: this.currentUser!.userId,
-      userName: this.currentUser!.userName,
-      displayName: this.currentUser!.displayName,
-      photoUrl: this.currentUser!.profilePhotoUrl
-    };
-  }
-
-  private createRemoteParticipant(): CallParticipant {
-    return {
-      userId: this.selectedContact!.userId!,
-      userName: this.selectedContact!.userName!,
-      displayName: this.selectedContact!.displayName,
-      photoUrl: this.selectedContact!.photoUrl
-    };
-  }
-
-  private showNotification(message: string, type: 'success' | 'error' | 'info' | 'warning'): void {
-    Swal.fire({
-      icon: type === 'success' ? 'success' : type === 'error' ? 'error' : type === 'warning' ? 'warning' : 'info',
-      title: message,
-      timer: 2000,
-      showConfirmButton: false
-    });
-  }
-
-  // ========================================
-  // SIGNALR LISTENERS - FIXED FOR DUPLICATES
+  // SIGNALR LISTENERS
   // ========================================
   private setupSignalRListeners(): void {
     if (this.listenersSetup) return;
     this.listenersSetup = true;
 
-    // FIX: Add duplicate check for received messages
     this.chatService.messageReceived$
       .pipe(takeUntil(this.destroy$))
       .subscribe((message) => {
-        // Skip if this is from the current user (already handled by messageSent$)
         if (message.fromUserId === this.currentUser?.userId) return;
 
-        // Only process if this message is for the current conversation
         if (message.conversationId === this.conversationId) {
-          // ✅ CHECK FOR DUPLICATES - This is the key fix!
           const messageExists = this.messages.some(
             m => Number(m.messageId) === Number(message.messageId)
           );
@@ -598,11 +334,9 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
         }
       });
 
-    // FIX: Add duplicate check for sent messages too
     this.chatService.messageSent$
       .pipe(takeUntil(this.destroy$))
       .subscribe((message) => {
-        // ✅ CHECK FOR DUPLICATES
         const messageExists = this.messages.some(
           m => Number(m.messageId) === Number(message.messageId)
         );
@@ -652,7 +386,6 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
       });
   }
 
-  // ... rest of your methods remain the same ...
   loadFriendsForGroup(): void {
     this.chatService
       .getFriendsList()
@@ -676,7 +409,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     this.conversationId = contact.conversationId;
     this.currentChatUserId = contact.userId || null;
     this.showChat = true;
-    this.messages = []; // Clear messages when switching chats
+    this.messages = [];
     this.userScrolledUp = false;
     this.showNewMessageButton = false;
     this.newMessageCount = 0;
@@ -769,9 +502,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
 
       if (msgDate !== lastMsgDate) {
         messageWithDate.showDateDivider = true;
-        messageWithDate.dateLabel = this.formatDateDivider(
-          message.createdAtUtc
-        );
+        messageWithDate.dateLabel = this.formatDateDivider(message.createdAtUtc);
       }
     } else {
       messageWithDate.showDateDivider = true;
@@ -801,12 +532,8 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     if (this.messages.length === 0 || !this.conversationId) return;
 
     const lastMessage = this.messages[this.messages.length - 1];
-    
-    // Skip if the last message is from the current user (no need to mark own messages as read)
     if (lastMessage.fromUserId === this.currentUser?.userId) return;
 
-    // Mark conversation as read regardless of unreadCount
-    // This ensures even if the count is wrong, we still mark it as read
     this.chatService.markConversationRead(
       this.conversationId,
       Number(lastMessage.messageId)
@@ -826,11 +553,9 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     if (!this.userScrolledUp) {
       this.showNewMessageButton = false;
       this.newMessageCount = 0;
-      
-      // ✅ Mark messages as read when user scrolls to bottom
+
       if (this.messages.length > 0 && this.selectedContact) {
         const lastMessage = this.messages[this.messages.length - 1];
-        // Only mark if the last message is from the other person (not from current user)
         if (lastMessage.fromUserId !== this.currentUser?.userId) {
           this.markLastMessageAsRead();
         }
@@ -858,7 +583,6 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
       this.newMessageCount = 0;
     }
 
-    // ✅ Mark messages as read after scrolling to bottom
     setTimeout(() => {
       this.markLastMessageAsRead();
     }, 500);
@@ -885,9 +609,6 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     this.showEmojiPicker = !this.showEmojiPicker;
   }
 
-  // All other methods remain exactly the same...
-  // [Include all remaining methods from your original file]
-  
   onMediaSelected(file: File): void {
     this.selectedMediaFile = file;
     this.mediaCaption = this.messageText;
@@ -921,9 +642,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
       .subscribe({
         next: (response) => {
           const mediaUrl = response.url;
-          const mediaType = response.contentType.startsWith('image')
-            ? 'image'
-            : 'video';
+          const mediaType = response.contentType.startsWith('image') ? 'image' : 'video';
           const caption = this.mediaCaption;
 
           if (this.selectedContact?.isGroup) {
@@ -998,7 +717,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
       .createGroup(request)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
-        next: (response) => {
+        next: () => {
           this.closeCreateGroupModal();
         },
         error: (err) => {
@@ -1037,12 +756,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
           (m) => m.userId === currentUserId
         );
 
-        if (!currentUser) {
-          this.performLeaveGroup();
-          return;
-        }
-
-        if (!currentUser.isAdmin) {
+        if (!currentUser || !currentUser.isAdmin) {
           this.performLeaveGroup();
           return;
         }
@@ -1053,18 +767,15 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
 
   openTransferAdminModal(details: GroupDetails): void {
     const currentUserId = this.authService.getCurrentUser()?.userId!;
-
     this.transferableMembers = details.members.filter(
       (m) => m.userId !== currentUserId
     );
-
     this.selectedNewAdminId = null;
     this.showTransferAdminModal = true;
-
     this.currentGroupDetails = details;
   }
 
-  onSelectNewAdmin(userId: string) {
+  onSelectNewAdmin(userId: string): void {
     this.selectedNewAdminId = userId;
   }
 
@@ -1082,8 +793,6 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
         error: () => {},
       });
   }
-
-  private refreshGroupDetailsAfterTransfer(): void {}
 
   performLeaveGroup(): void {
     if (
@@ -1198,10 +907,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     this.deleteConfirmationText = '';
   }
 
-  onDeleteMessage(event: {
-    messageId: number;
-    deleteForEveryone: boolean;
-  }): void {
+  onDeleteMessage(event: { messageId: number; deleteForEveryone: boolean }): void {
     this.chatService.deleteMessage(event.messageId, event.deleteForEveryone);
   }
 
@@ -1236,7 +942,6 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
       );
 
       this.closeForwardModal();
-
       this.openChat(contact);
 
       setTimeout(() => {
@@ -1247,13 +952,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
   }
 
   deleteGroup(): void {
-    if (this.deleteConfirmationText !== 'DELETE') {
-      return;
-    }
-
-    if (!this.conversationId) {
-      return;
-    }
+    if (this.deleteConfirmationText !== 'DELETE' || !this.conversationId) return;
 
     this.chatService
       .deleteGroup(this.conversationId)
@@ -1271,8 +970,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
         error: (err) => {
           console.error('Failed to delete group:', err);
           const errorMsg =
-            err.error?.error ||
-            'Failed to delete group. You may not have permission.';
+            err.error?.error || 'Failed to delete group. You may not have permission.';
           alert(errorMsg);
         },
       });
@@ -1303,34 +1001,23 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     }
 
     this.searchTargetMessageId = result.messageId;
-
     this.closeSearchModal();
-
     this.openChat(targetContact);
-
     this.waitForMessagesAndScroll(result.messageId);
   }
 
-  private waitForMessagesAndScroll(
-    messageId: number,
-    attempt: number = 0
-  ): void {
+  private waitForMessagesAndScroll(messageId: number, attempt: number = 0): void {
     const maxAttempts = 15;
     const delay = 300;
 
     if (attempt >= maxAttempts) {
       console.error('Could not find message after', maxAttempts, 'attempts');
-      console.log(
-        'Available messages:',
-        this.messages.map((m) => m.messageId)
-      );
       this.searchTargetMessageId = null;
       return;
     }
 
     setTimeout(() => {
       if (this.messages.length === 0) {
-        console.log('Messages not loaded yet, retrying...', attempt + 1);
         this.waitForMessagesAndScroll(messageId, attempt + 1);
         return;
       }
@@ -1340,13 +1027,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
       );
 
       if (messageFound) {
-        console.log(
-          'Message found in array, attempting scroll. MessageId:',
-          messageId
-        );
-
         this.cdr.detectChanges();
-
         setTimeout(() => {
           this.scrollToMessage(messageId);
           setTimeout(() => {
@@ -1354,16 +1035,6 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
           }, 3000);
         }, 100);
       } else {
-        console.log(
-          'Message not in array yet, retrying...',
-          attempt + 1,
-          'MessageId:',
-          messageId
-        );
-        console.log(
-          'Current message IDs:',
-          this.messages.map((m) => m.messageId)
-        );
         this.waitForMessagesAndScroll(messageId, attempt + 1);
       }
     }, delay);
@@ -1374,23 +1045,16 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
       console.error('Sidebar component or contacts not available');
       return null;
     }
-
-    const contact = this.sidebarComp.contacts.find(
+    return this.sidebarComp.contacts.find(
       (c) => c.conversationId === conversationId
-    );
-    return contact || null;
+    ) || null;
   }
 
-  private async loadContactByConversationId(
-    conversationId: string
-  ): Promise<void> {
+  private async loadContactByConversationId(conversationId: string): Promise<void> {
     return new Promise((resolve) => {
       if (this.sidebarComp) {
         this.sidebarComp.loadContacts();
-
-        setTimeout(() => {
-          resolve();
-        }, 300);
+        setTimeout(() => resolve(), 300);
       } else {
         resolve();
       }
@@ -1404,13 +1068,13 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     return [];
   }
 
-  success(msg: string) {
+  success(msg: string): void {
     Swal.fire({
       icon: 'success',
       title: 'Success',
       text: msg,
       timer: 2000,
-      showConfirmButton: false
+      showConfirmButton: false,
     });
   }
 
