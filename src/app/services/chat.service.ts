@@ -356,19 +356,53 @@ export class ChatService {
   // SIGNALR HUB METHODS - MESSAGING
   // ========================================
 
-  async sendDirectMessage(userId: string, body: string, contentType: string = 'text', mediaUrl?: string): Promise<void> {
-    if (!this.isConnected()) {
-      throw new Error('SignalR not connected. Please reconnect.');
-    }
-    await this.hubConnection!.invoke('SendDirect', userId, body, contentType, mediaUrl || null);
-  }
+  // async sendDirectMessage(userId: string, body: string, contentType: string = 'text', mediaUrl?: string): Promise<void> {
+  //   if (!this.isConnected()) {
+  //     throw new Error('SignalR not connected. Please reconnect.');
+  //   }
+  //   await this.hubConnection!.invoke('SendDirect', userId, body, contentType, mediaUrl || null);
+  // }
 
-  async sendGroupMessage(conversationId: string, body: string, contentType: string = 'text', mediaUrl?: string): Promise<void> {
-    if (!this.isConnected()) {
-      throw new Error('SignalR not connected. Please reconnect.');
-    }
-    await this.hubConnection!.invoke('SendGroupMessage', conversationId, body, contentType, mediaUrl || null);
+  // Updated hub invoke
+async sendDirectMessage(
+  userId: string,
+  body: string,
+  contentType: string = 'text',
+  mediaUrl?: string,
+  encryptedKeys: { userId: string; encryptedKey: string }[] = []
+): Promise<void> {
+  if (!this.isConnected()) {
+    throw new Error('SignalR not connected. Please reconnect.');
   }
+  await this.hubConnection!.invoke(
+    'SendDirect',
+    userId,
+    body,
+    contentType,
+    mediaUrl || null,
+    encryptedKeys        // ← new param
+  );
+}
+
+  async sendGroupMessage(
+  conversationId: string,
+  body: string,
+  contentType: string = 'text',
+  mediaUrl?: string,
+  encryptedKeys: { userId: string; encryptedKey: string }[] = []
+): Promise<void> {
+  if (!this.isConnected()) {
+    throw new Error('SignalR not connected. Please reconnect.');
+  }
+  await this.hubConnection!.invoke(
+    'SendGroupMessage',
+    conversationId,
+    body,
+    contentType,
+    mediaUrl || null,
+    encryptedKeys        // ← new param
+  );
+}
 
   async markMessageRead(messageId: number): Promise<void> {
     if (!this.isConnected()) return;
@@ -765,6 +799,16 @@ export class ChatService {
       { headers: this.getHeaders().delete('Content-Type') }
     );
   }
+
+  registerPublicKey(publicKeyJwk: string): Observable<void> {
+  return this.http.post<void>(`${this.apiBase}/user/public-key`, { publicKeyJwk }, { headers: this.getHeaders() });
+}
+
+getPublicKeys(userIds: string[]): Observable<{ userId: string; publicKeyJwk: string }[]> {
+  return this.http.post<{ userId: string; publicKeyJwk: string }[]>(
+    `${this.apiBase}/user/public-keys`, { userIds }, { headers: this.getHeaders() }
+  );
+}
 
   // ========================================
   // UTILITY METHODS

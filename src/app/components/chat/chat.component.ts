@@ -28,6 +28,7 @@ import { ModalsComponent } from './modals/modals.component';
 import { SidebarComponent } from './sidebar/sidebar.component';
 import { SearchModalComponent } from './modals/search-modal/search-modal.component';
 import Swal from 'sweetalert2';
+import { CryptoService } from '../../services/crypto.service';
 
 interface MessageWithDate extends Message {
   dateLabel?: string;
@@ -124,10 +125,12 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
   showForwardModal = false;
   forwardMessage: Message | null = null;
   forwardContacts: Contact[] = [];
+  currentPrivateKey: CryptoKey | null = null;
 
   constructor(
     private authService: AuthService,
     private chatService: ChatService,
+    private cryptoService: CryptoService,
     private router: Router,
     private cdr: ChangeDetectorRef
   ) {}
@@ -153,7 +156,10 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     if (!this.currentUser) {
       this.router.navigate(['/login']);
       return;
+        this.listenForDeviceSwitch();
     }
+
+    
 
     try {
       await this.chatService.connectToHub();
@@ -274,6 +280,23 @@ console.log('match:', data.deletedBy === this.currentUser?.userId);
     }
   }
 
+  private listenForDeviceSwitch(): void {
+  this.authService.deviceSwitchConfirmed$
+    .pipe(takeUntil(this.destroy$))
+    .subscribe(async () => {
+      console.log('🔐 [Chat] Device switch confirmed — reloading history with new key');
+
+      // Refresh the private key reference since it just changed
+      const userId = this.authService.getCurrentUserId()!;
+      this.currentPrivateKey = await this.cryptoService.getPrivateKey(userId);
+
+      // Reload history — old messages will show 🔒, new ones will decrypt fine
+      if (this.conversationId) {
+        this.loadHistory();
+      }
+    });
+}
+
   private autoFocusMessageInput(): void {
     if (this.editingMessageId !== null) return;
 
@@ -303,88 +326,283 @@ console.log('match:', data.deletedBy === this.currentUser?.userId);
   // ========================================
   // SIGNALR LISTENERS
   // ========================================
-  private setupSignalRListeners(): void {
-    if (this.listenersSetup) return;
-    this.listenersSetup = true;
+  // private setupSignalRListeners(): void {
+  //   if (this.listenersSetup) return;
+  //   this.listenersSetup = true;
 
-    this.chatService.messageReceived$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((message) => {
-        if (message.fromUserId === this.currentUser?.userId) return;
+  //   this.chatService.messageReceived$
+  //     .pipe(takeUntil(this.destroy$))
+  //     .subscribe((message) => {
+  //       if (message.fromUserId === this.currentUser?.userId) return;
 
-        if (message.conversationId === this.conversationId) {
-          const messageExists = this.messages.some(
-            m => Number(m.messageId) === Number(message.messageId)
-          );
+  //       if (message.conversationId === this.conversationId) {
+  //         const messageExists = this.messages.some(
+  //           m => Number(m.messageId) === Number(message.messageId)
+  //         );
 
-          if (!messageExists) {
-            console.log('✅ Adding new received message:', message.messageId);
-            this.addMessageToView(message, false);
+  //         if (!messageExists) {
+  //           console.log('✅ Adding new received message:', message.messageId);
+  //           this.addMessageToView(message, false);
 
-            if (this.userScrolledUp) {
-              this.newMessageCount++;
-              this.showNewMessageButton = true;
-            } else {
-              this.shouldScrollToBottom = true;
-              setTimeout(() => this.markLastMessageAsRead(), 300);
-            }
-          } else {
-            console.log('⚠️ Duplicate message ignored:', message.messageId);
-          }
-        }
-      });
+  //           if (this.userScrolledUp) {
+  //             this.newMessageCount++;
+  //             this.showNewMessageButton = true;
+  //           } else {
+  //             this.shouldScrollToBottom = true;
+  //             setTimeout(() => this.markLastMessageAsRead(), 300);
+  //           }
+  //         } else {
+  //           console.log('⚠️ Duplicate message ignored:', message.messageId);
+  //         }
+  //       }
+  //     });
 
-    this.chatService.messageSent$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((message) => {
-        const messageExists = this.messages.some(
-          m => Number(m.messageId) === Number(message.messageId)
-        );
+  //   this.chatService.messageSent$
+  //     .pipe(takeUntil(this.destroy$))
+  //     .subscribe((message) => {
+  //       const messageExists = this.messages.some(
+  //         m => Number(m.messageId) === Number(message.messageId)
+  //       );
 
-        if (!messageExists) {
-          console.log('✅ Adding new sent message:', message.messageId);
-          this.addMessageToView(message, true);
-          this.shouldScrollToBottom = true;
+  //       if (!messageExists) {
+  //         console.log('✅ Adding new sent message:', message.messageId);
+  //         this.addMessageToView(message, true);
+  //         this.shouldScrollToBottom = true;
+  //       } else {
+  //         console.log('⚠️ Duplicate sent message ignored:', message.messageId);
+  //       }
+  //     });
+
+  //   this.chatService.messageStatusUpdated$
+  //     .pipe(takeUntil(this.destroy$))
+  //     .subscribe((data) => {
+  //       const msg = this.messages.find(
+  //         (m) => Number(m.messageId) === data.messageId
+  //       );
+  //       if (msg) {
+  //         msg.messageStatus = data.status as any;
+  //         this.cdr.detectChanges();
+  //       }
+  //     });
+
+  //   this.chatService.conversationReadUpdated$
+  //     .pipe(takeUntil(this.destroy$))
+  //     .subscribe((data) => {
+  //       this.messages.forEach((msg) => {
+  //         if (
+  //           Number(msg.messageId) <= data.lastReadMessageId &&
+  //           msg.fromUserId === this.currentUser?.userId
+  //         ) {
+  //           msg.messageStatus = 'Read';
+  //         }
+  //       });
+  //       this.cdr.detectChanges();
+  //     });
+
+  //   this.chatService.conversationMarkedAsRead$
+  //     .pipe(takeUntil(this.destroy$))
+  //     .subscribe((data) => {
+  //       if (data.conversationId === this.conversationId) {
+  //         this.firstUnreadMessageId = null;
+  //         this.cdr.detectChanges();
+  //       }
+  //     });
+  // }
+
+loadHistory(): void {
+  this.chatService
+    .getHistory(this.conversationId!)
+    .pipe(takeUntil(this.destroy$))
+    .subscribe(async (history) => {
+      // Decrypt all messages before processing
+      const decrypted = await this.decryptMessages(history);
+      this.messages = this.processMessages(decrypted.reverse());
+
+      if (!this.searchTargetMessageId) {
+        this.shouldScrollToBottom = true;
+        this.markLastMessageAsRead();
+      } else {
+        console.log('Search target set, skipping auto-scroll to bottom');
+      }
+    });
+}
+
+private setupSignalRListeners(): void {
+  if (this.listenersSetup) return;
+  this.listenersSetup = true;
+
+  // ─── messageReceived ───────────────────────────────────────────────────────
+  this.chatService.messageReceived$
+    .pipe(takeUntil(this.destroy$))
+    .subscribe(async (message) => {
+      if (message.fromUserId === this.currentUser?.userId) return;
+      if (message.conversationId !== this.conversationId) return;
+
+      const messageExists = this.messages.some(
+        m => Number(m.messageId) === Number(message.messageId)
+      );
+
+      if (!messageExists) {
+        console.log('✅ Adding new received message:', message.messageId);
+        const decrypted = await this.decryptSingleMessage(message);
+        this.addMessageToView(decrypted, false);
+
+        if (this.userScrolledUp) {
+          this.newMessageCount++;
+          this.showNewMessageButton = true;
         } else {
-          console.log('⚠️ Duplicate sent message ignored:', message.messageId);
+          this.shouldScrollToBottom = true;
+          setTimeout(() => this.markLastMessageAsRead(), 300);
         }
-      });
+      } else {
+        console.log('⚠️ Duplicate message ignored:', message.messageId);
+      }
+    });
 
-    this.chatService.messageStatusUpdated$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((data) => {
-        const msg = this.messages.find(
-          (m) => Number(m.messageId) === data.messageId
-        );
-        if (msg) {
-          msg.messageStatus = data.status as any;
-          this.cdr.detectChanges();
-        }
-      });
+  // ─── messageSent ──────────────────────────────────────────────────────────
+  this.chatService.messageSent$
+    .pipe(takeUntil(this.destroy$))
+    .subscribe(async (message) => {
+      const messageExists = this.messages.some(
+        m => Number(m.messageId) === Number(message.messageId)
+      );
 
-    this.chatService.conversationReadUpdated$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((data) => {
-        this.messages.forEach((msg) => {
-          if (
-            Number(msg.messageId) <= data.lastReadMessageId &&
-            msg.fromUserId === this.currentUser?.userId
-          ) {
-            msg.messageStatus = 'Read';
-          }
-        });
+      if (!messageExists) {
+        console.log('✅ Adding new sent message:', message.messageId);
+        const decrypted = await this.decryptSingleMessage(message);
+        this.addMessageToView(decrypted, true);
+        this.shouldScrollToBottom = true;
+      } else {
+        console.log('⚠️ Duplicate sent message ignored:', message.messageId);
+      }
+    });
+
+  // ─── messageStatusUpdated ─────────────────────────────────────────────────
+  this.chatService.messageStatusUpdated$
+    .pipe(takeUntil(this.destroy$))
+    .subscribe((data) => {
+      const msg = this.messages.find(
+        m => Number(m.messageId) === data.messageId
+      );
+      if (msg) {
+        msg.messageStatus = data.status as any;
         this.cdr.detectChanges();
-      });
+      }
+    });
 
-    this.chatService.conversationMarkedAsRead$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((data) => {
-        if (data.conversationId === this.conversationId) {
-          this.firstUnreadMessageId = null;
-          this.cdr.detectChanges();
+  // ─── conversationReadUpdated ──────────────────────────────────────────────
+  this.chatService.conversationReadUpdated$
+    .pipe(takeUntil(this.destroy$))
+    .subscribe((data) => {
+      this.messages.forEach((msg) => {
+        if (
+          Number(msg.messageId) <= data.lastReadMessageId &&
+          msg.fromUserId === this.currentUser?.userId
+        ) {
+          msg.messageStatus = 'Read';
         }
       });
+      this.cdr.detectChanges();
+    });
+
+  // ─── conversationMarkedAsRead ─────────────────────────────────────────────
+  this.chatService.conversationMarkedAsRead$
+    .pipe(takeUntil(this.destroy$))
+    .subscribe((data) => {
+      if (data.conversationId === this.conversationId) {
+        this.firstUnreadMessageId = null;
+        this.cdr.detectChanges();
+      }
+    });
+}
+
+// ============================================================================
+// DECRYPT HELPERS
+// ============================================================================
+
+private async decryptMessages(messages: any[]): Promise<any[]> {
+  const currentUserId = this.authService.getCurrentUserId();
+  if (!currentUserId) return messages;
+
+  // Fetch private key once and reuse for every message in the batch
+  const privateKey = await this.cryptoService.getPrivateKey(currentUserId);
+  if (!privateKey) {
+    console.warn('⚠️ No private key on this device — messages will show as encrypted');
+    return messages;
   }
+
+  return Promise.all(messages.map(m => this.decryptSingleMessage(m, privateKey)));
+}
+
+// private async decryptSingleMessage(message: any, privateKey?: CryptoKey): Promise<any> {
+//   // Deleted messages already have a placeholder body — nothing to decrypt
+//   if (message.isDeleted) return message;
+
+//   // No encrypted key means either a legacy message or a media-only message
+//   // with no caption — return as-is either way
+//   if (!message.body || !message.encryptedKey) return message;
+
+//   // Must be "iv:ciphertext" format — single colon separator
+//   // A plain URL or legacy text body won't match this pattern
+//   const colonIndex = message.body.indexOf(':');
+//   if (colonIndex === -1) return message;
+
+//   try {
+//     const currentUserId = this.authService.getCurrentUserId()!;
+//     const key = privateKey ?? await this.cryptoService.getPrivateKey(currentUserId);
+//     if (!key) return message;
+
+//     const iv         = message.body.substring(0, colonIndex);
+//     const ciphertext = message.body.substring(colonIndex + 1);
+
+//     const decryptedBody = await this.cryptoService.decryptMessage(
+//       ciphertext,
+//       iv,
+//       message.encryptedKey,
+//       key
+//     );
+
+//     return { ...message, body: decryptedBody };
+
+//   } catch (err) {
+//     console.error(`❌ Failed to decrypt message ${message.messageId}:`, err);
+//     return { ...message, body: '🔒 Unable to decrypt message' };
+//   }
+// }
+
+// chat.component.ts — decryptSingleMessage, fix the split
+private async decryptSingleMessage(message: any, privateKey?: CryptoKey): Promise<any> {
+  if (message.isDeleted)              return message;
+  if (!message.body)                  return message;
+  if (!message.encryptedKey)          return message;
+
+  // Body must contain exactly one colon separating iv:ciphertext
+  const colonIdx = message.body.indexOf(':');
+  if (colonIdx === -1)                return message;
+
+  try {
+    const currentUserId = this.authService.getCurrentUserId()!;
+    const key = privateKey ?? await this.cryptoService.getPrivateKey(currentUserId);
+    if (!key) return message;
+
+    // Split on FIRST colon only — ciphertext (base64) never contains colons
+    const iv         = message.body.substring(0, colonIdx);
+    const ciphertext = message.body.substring(colonIdx + 1);
+
+    const decryptedBody = await this.cryptoService.decryptMessage(
+      ciphertext,
+      iv,
+      message.encryptedKey,
+      key
+    );
+
+    return { ...message, body: decryptedBody };
+
+  } catch (err) {
+    console.error(`❌ Failed to decrypt message ${message.messageId}:`, err);
+    return { ...message, body: '🔒 Unable to decrypt message' };
+  }
+}
 
   loadFriendsForGroup(): void {
     this.chatService
@@ -419,22 +637,23 @@ console.log('match:', data.deletedBy === this.currentUser?.userId);
     this.loadGroupDetailsIfGroup();
   }
 
-  loadHistory(): void {
-    this.chatService
-      .getHistory(this.conversationId!)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((history) => {
-        this.messages = this.processMessages(history.reverse());
+  // loadHistory(): void {
+  //   this.chatService
+  //     .getHistory(this.conversationId!)
+  //     .pipe(takeUntil(this.destroy$))
+  //     .subscribe((history) => {
+  //       this.messages = this.processMessages(history.reverse());
 
-        if (!this.searchTargetMessageId) {
-          this.shouldScrollToBottom = true;
-          this.markLastMessageAsRead();
-        } else {
-          console.log('Search target set, skipping auto-scroll to bottom');
-        }
-      });
-  }
+  //       if (!this.searchTargetMessageId) {
+  //         this.shouldScrollToBottom = true;
+  //         this.markLastMessageAsRead();
+  //       } else {
+  //         console.log('Search target set, skipping auto-scroll to bottom');
+  //       }
+  //     });
+  // }
 
+  
   loadGroupDetailsIfGroup(): void {
     this.currentGroupDetails = null;
     if (this.selectedContact?.isGroup) {
@@ -513,20 +732,181 @@ console.log('match:', data.deletedBy === this.currentUser?.userId);
     this.cdr.detectChanges();
   }
 
-  sendMessage(): void {
-    if (!this.messageText.trim() || !this.conversationId) return;
+  // ========================================
+// SEND TEXT MESSAGE
+// ========================================
 
-    const body = this.messageText.trim();
+async sendMessage(): Promise<void> {
+  if (!this.messageText.trim() || !this.conversationId) return;
 
+  const body = this.messageText.trim();
+  this.messageText = '';
+  this.showEmojiPicker = false;
+
+  try {
     if (this.selectedContact?.isGroup) {
-      this.chatService.sendGroupMessage(this.conversationId, body);
+      await this.sendEncryptedGroupMessage(body, 'text');
     } else if (this.currentChatUserId) {
-      this.chatService.sendDirectMessage(this.currentChatUserId, body);
+      await this.sendEncryptedDirectMessage(body, 'text');
     }
-
-    this.messageText = '';
-    this.showEmojiPicker = false;
+  } catch (err) {
+    console.error('❌ Failed to send message:', err);
+    // Optionally restore the message text so user doesn't lose it
+    this.messageText = body;
   }
+}
+
+// ========================================
+// SEND MEDIA MESSAGE
+// ========================================
+
+sendMediaMessage(): void {
+  if (!this.selectedMediaFile || this.isUploadingMedia) return;
+
+  this.isUploadingMedia = true;
+
+  this.chatService
+    .uploadMedia(this.selectedMediaFile)
+    .pipe(takeUntil(this.destroy$))
+    .subscribe({
+      next: async (response) => {
+        const mediaUrl  = response.url;
+        const mediaType = response.contentType.startsWith('image') ? 'image' : 'video';
+        const caption   = this.mediaCaption;
+
+        try {
+          // For media messages we encrypt the caption (or mediaUrl as fallback).
+          // The mediaUrl itself is a Cloudinary link — it is NOT encrypted here.
+          // To fully encrypt media, you would need to encrypt the file bytes
+          // client-side before uploading. That is a separate concern.
+          const bodyToEncrypt = caption || mediaUrl;
+
+          if (this.selectedContact?.isGroup) {
+            await this.sendEncryptedGroupMessage(bodyToEncrypt, mediaType, mediaUrl);
+          } else if (this.currentChatUserId) {
+            await this.sendEncryptedDirectMessage(bodyToEncrypt, mediaType, mediaUrl);
+          }
+        } catch (err) {
+          console.error('❌ Failed to send media message:', err);
+        }
+
+        this.cancelMediaUpload();
+      },
+      error: (err) => {
+        console.error('Media upload failed:', err);
+        this.isUploadingMedia = false;
+      },
+    });
+}
+
+// ========================================
+// ENCRYPTED SEND — DIRECT
+// ========================================
+
+private async sendEncryptedDirectMessage(
+  plaintext: string,
+  contentType: string = 'text',
+  mediaUrl?: string
+): Promise<void> {
+  const currentUser = this.authService.getCurrentUser();
+  const currentUserId = currentUser?.userId;
+  if (!currentUserId || !this.currentChatUserId) return;
+
+  // Fetch public keys for both sender and recipient.
+  // Sender needs their own copy so they can decrypt their sent messages.
+  const keys = await this.chatService
+    .getPublicKeys([this.currentChatUserId, currentUserId])
+    .toPromise();
+
+  if (!keys || keys.length === 0) {
+    throw new Error('Could not fetch public keys for encryption');
+  }
+
+  const keyMap = keys.map(k => ({
+    userId: k.userId,
+    jwk: JSON.parse(k.publicKeyJwk) as JsonWebKey
+  }));
+
+  const { ciphertext, iv, encryptedKeys } =
+    await this.cryptoService.encryptMessage(plaintext, keyMap);
+
+  // Body format: "iv:ciphertext" — opaque blob stored in DB
+  const encryptedBody = `${iv}:${ciphertext}`;
+
+  await this.chatService.sendDirectMessage(
+    this.currentChatUserId,
+    encryptedBody,
+    contentType,
+    mediaUrl,
+    encryptedKeys   // per-user AES key copies
+  );
+}
+
+// ========================================
+// ENCRYPTED SEND — GROUP
+// ========================================
+
+private async sendEncryptedGroupMessage(
+  plaintext: string,
+  contentType: string = 'text',
+  mediaUrl?: string
+): Promise<void> {
+  if (!this.conversationId) return;
+
+  const currentUser = this.authService.getCurrentUser();
+  const currentUserId = currentUser?.userId;
+  if (!currentUserId) return;
+
+  // Fetch public keys for ALL group members (including self).
+  // Group member IDs come from the already-loaded group details.
+  const memberIds = this.currentGroupDetails?.members?.map((m: any) => m.userId) ?? [];
+
+  if (memberIds.length === 0) {
+    throw new Error('No group members found for encryption');
+  }
+
+  // Ensure sender is included (they need to decrypt their own sent messages)
+  const userIds = Array.from(new Set([...memberIds, currentUserId]));
+
+  const keys = await this.chatService.getPublicKeys(userIds).toPromise();
+
+  if (!keys || keys.length === 0) {
+    throw new Error('Could not fetch public keys for group encryption');
+  }
+
+  const keyMap = keys.map(k => ({
+    userId: k.userId,
+    jwk: JSON.parse(k.publicKeyJwk) as JsonWebKey
+  }));
+
+  const { ciphertext, iv, encryptedKeys } =
+    await this.cryptoService.encryptMessage(plaintext, keyMap);
+
+  const encryptedBody = `${iv}:${ciphertext}`;
+
+  await this.chatService.sendGroupMessage(
+    this.conversationId,
+    encryptedBody,
+    contentType,
+    mediaUrl,
+    encryptedKeys
+  );
+}
+
+  // sendMessage(): void {
+  //   if (!this.messageText.trim() || !this.conversationId) return;
+
+  //   const body = this.messageText.trim();
+
+  //   if (this.selectedContact?.isGroup) {
+  //     this.chatService.sendGroupMessage(this.conversationId, body);
+  //   } else if (this.currentChatUserId) {
+  //     this.chatService.sendDirectMessage(this.currentChatUserId, body);
+  //   }
+
+  //   this.messageText = '';
+  //   this.showEmojiPicker = false;
+  // }
 
   markLastMessageAsRead(): void {
     if (this.messages.length === 0 || !this.conversationId) return;
@@ -631,44 +1011,44 @@ console.log('match:', data.deletedBy === this.currentUser?.userId);
     this.isUploadingMedia = false;
   }
 
-  sendMediaMessage(): void {
-    if (!this.selectedMediaFile || this.isUploadingMedia) return;
+  // sendMediaMessage(): void {
+  //   if (!this.selectedMediaFile || this.isUploadingMedia) return;
 
-    this.isUploadingMedia = true;
+  //   this.isUploadingMedia = true;
 
-    this.chatService
-      .uploadMedia(this.selectedMediaFile)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: (response) => {
-          const mediaUrl = response.url;
-          const mediaType = response.contentType.startsWith('image') ? 'image' : 'video';
-          const caption = this.mediaCaption;
+  //   this.chatService
+  //     .uploadMedia(this.selectedMediaFile)
+  //     .pipe(takeUntil(this.destroy$))
+  //     .subscribe({
+  //       next: (response) => {
+  //         const mediaUrl = response.url;
+  //         const mediaType = response.contentType.startsWith('image') ? 'image' : 'video';
+  //         const caption = this.mediaCaption;
 
-          if (this.selectedContact?.isGroup) {
-            this.chatService.sendGroupMessage(
-              this.conversationId!,
-              caption || mediaUrl,
-              mediaType,
-              mediaUrl
-            );
-          } else if (this.currentChatUserId) {
-            this.chatService.sendDirectMessage(
-              this.currentChatUserId,
-              caption || mediaUrl,
-              mediaType,
-              mediaUrl
-            );
-          }
+  //         if (this.selectedContact?.isGroup) {
+  //           this.chatService.sendGroupMessage(
+  //             this.conversationId!,
+  //             caption || mediaUrl,
+  //             mediaType,
+  //             mediaUrl
+  //           );
+  //         } else if (this.currentChatUserId) {
+  //           this.chatService.sendDirectMessage(
+  //             this.currentChatUserId,
+  //             caption || mediaUrl,
+  //             mediaType,
+  //             mediaUrl
+  //           );
+  //         }
 
-          this.cancelMediaUpload();
-        },
-        error: (err) => {
-          console.error('Media upload failed:', err);
-          this.isUploadingMedia = false;
-        },
-      });
-  }
+  //         this.cancelMediaUpload();
+  //       },
+  //       error: (err) => {
+  //         console.error('Media upload failed:', err);
+  //         this.isUploadingMedia = false;
+  //       },
+  //     });
+  // }
 
   openMediaViewer(url: string, type: 'image' | 'video'): void {
     this.viewerMediaUrl = url;

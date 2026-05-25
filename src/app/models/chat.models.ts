@@ -9,18 +9,18 @@ export interface User {
 }
 
 export interface Contact {
-  conversationId: string;
-  isGroup: boolean;
-  userId?: string;
-  userName?: string;
-  displayName: string;
-  photoUrl?: string;
-  lastMessage?: string;
-  lastMessageTime?: string;
-  unreadCount?: number;
-  isOnline?: boolean;
-  lastSeenUtc?: string;
-  lastSeenLocal?: string;
+  conversationId:           string;
+  isGroup:                  boolean;
+  userId?:                  string;
+  userName?:                string;
+  displayName:              string;
+  photoUrl?:                string;
+  isOnline?:                boolean;
+  lastSeenUtc?:             string;
+  lastMessageTime?:         string;
+  lastMessage?:             string;
+  lastMessageEncryptedKey?: string;   // ✅ NEW
+  unreadCount?:             number;
 }
 
 // Update in chat.models.ts
