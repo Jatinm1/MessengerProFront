@@ -19,6 +19,8 @@ export class AuthService {
 public deviceSwitchRequired$ = new Subject<string>();   // emits userId
 public deviceSwitchConfirmed$ = new Subject<void>();
 public deviceSwitchDeclined$  = new Subject<void>();
+public keyBackupRequired$ = new Subject<void>();
+
 
   currentUser$ = this.currentUserSubject.asObservable();
   token$ = this.tokenSubject.asObservable();
@@ -187,7 +189,7 @@ private clearAuthData(): void {
   this.deleteCookie('current_user');
   this.currentUserSubject.next(null);
   this.tokenSubject.next(null);
-  this.encryptionInitialized = false;  // ← reset guard
+  this.encryptionInitialized = false;
 }
 
 
@@ -218,6 +220,7 @@ private promptDeviceSwitch(userId: string): void {
 
 // Called when user confirms they want to use this device for E2EE
 async confirmDeviceSwitch(userId: string): Promise<void> {
+  console.trace('🚨 [E2EE] confirmDeviceSwitch called');
   await this.generateAndRegisterKeys(userId);
   this.encryptionInitialized = true;
   this.deviceSwitchConfirmed$.next();
@@ -230,11 +233,12 @@ declineDeviceSwitch(): void {
 }
 
 private async generateAndRegisterKeys(userId: string): Promise<void> {
-  console.log('🔐 [E2EE] generateAndRegisterKeys called for', userId);
+  console.trace('🚨 [E2EE] generateAndRegisterKeys called — stack trace above');
   const { publicKeyJwk, privateKeyJwk } = await this.cryptoService.generateKeyPair();
   await this.cryptoService.replacePrivateKey(userId, privateKeyJwk);
   await this.registerPublicKey(JSON.stringify(publicKeyJwk));
-  console.log('🔐 [E2EE] generateAndRegisterKeys complete ✅');
+  console.log('🔐 [E2EE] generateAndRegisterKeys complete');
+  this.keyBackupRequired$.next();
 }
 
   /**
@@ -303,4 +307,40 @@ private async generateAndRegisterKeys(userId: string): Promise<void> {
   private deleteCookie(name: string): void {
     document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;`;
   }
+  async confirmDeviceSwitchAfterRestore(userId: string): Promise<void> {
+  console.log('🔐 [E2EE] confirmDeviceSwitchAfterRestore — using restored key');
+
+  // Set flag immediately to prevent initializeEncryption from firing again
+  this.encryptionInitialized = true;
+
+  try {
+    // Private key is already in IndexedDB from importEncryptedKeyBackup.
+    // We only need to re-register the matching PUBLIC key on the server
+    // so future senders encrypt with the correct public key.
+    const privateJwk = await this.cryptoService.getPrivateKeyJwk(userId);
+
+    if (!privateJwk) {
+      // Should never happen — importEncryptedKeyBackup just stored it
+      console.error('❌ No key found after restore — falling back to fresh generation');
+      await this.generateAndRegisterKeys(userId);
+    } else {
+      // Derive public JWK from private JWK (RSA n + e are the public components)
+      const publicJwk = await this.cryptoService.derivePublicJwkFromPrivate(privateJwk);
+      await this.registerPublicKey(JSON.stringify(publicJwk));
+      console.log('✅ [E2EE] Restored key registered with server');
+      // Do NOT emit keyBackupRequired$ — backup already exists for this key
+    }
+
+    this.deviceSwitchConfirmed$.next();
+
+  } catch (err) {
+    console.error('❌ confirmDeviceSwitchAfterRestore failed:', err);
+    // Safe fallback — fresh keys, user loses old messages but app works
+    this.encryptionInitialized = false;
+    await this.generateAndRegisterKeys(userId);
+    this.encryptionInitialized = true;
+    this.deviceSwitchConfirmed$.next();
+  }
+}
+
 }
