@@ -11,7 +11,7 @@ import {
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { Subject, takeUntil } from 'rxjs';
+import { firstValueFrom, Subject, takeUntil } from 'rxjs';
 import { AuthService } from '../../services/auth.service';
 import { ChatService } from '../../services/chat.service';
 import {
@@ -29,6 +29,7 @@ import { SidebarComponent } from './sidebar/sidebar.component';
 import { SearchModalComponent } from './modals/search-modal/search-modal.component';
 import Swal from 'sweetalert2';
 import { CryptoService } from '../../services/crypto.service';
+import { ClientSearchResult } from '../../services/search.service';
 
 interface MessageWithDate extends Message {
   dateLabel?: string;
@@ -1314,22 +1315,117 @@ private async sendEncryptedGroupMessage(
     this.forwardContacts = [];
   }
 
-  forwardMessageTo(contact: Contact): void {
-    if (this.forwardMessage) {
-      this.chatService.forwardMessageViaHub(
-        Number(this.forwardMessage.messageId),
-        contact.conversationId
-      );
+  // forwardMessageTo(contact: Contact): void {
+  //   if (this.forwardMessage) {
+  //     this.chatService.forwardMessageViaHub(
+  //       Number(this.forwardMessage.messageId),
+  //       contact.conversationId
+  //     );
 
-      this.closeForwardModal();
-      this.openChat(contact);
+  //     this.closeForwardModal();
+  //     this.openChat(contact);
 
-      setTimeout(() => {
-        this.shouldScrollToBottom = true;
-        this.cdr.detectChanges();
-      }, 200);
+  //     setTimeout(() => {
+  //       this.shouldScrollToBottom = true;
+  //       this.cdr.detectChanges();
+  //     }, 200);
+  //   }
+  // }
+
+  // chat.component.ts — replace forwardMessageTo
+
+async forwardMessageTo(contact: Contact): Promise<void> {
+  if (!this.forwardMessage) return;
+
+  try {
+    // 1. Get the decrypted body from the in-memory message object
+    //    (it's already decrypted in this.messages array)
+    const decryptedMessage = this.messages.find(
+      m => Number(m.messageId) === Number(this.forwardMessage!.messageId)
+    );
+
+    if (!decryptedMessage?.body) {
+      console.error('❌ Cannot forward — message body not found in memory');
+      return;
     }
+
+    const plaintext    = decryptedMessage.body;
+    const contentType  = decryptedMessage.contentType ?? 'text';
+    const mediaUrl     = decryptedMessage.mediaUrl ?? undefined;
+    const currentUserId = this.authService.getCurrentUserId()!;
+
+    // 2. Get the target conversation ID
+    const convResponse: any = await firstValueFrom(
+      this.chatService.createConversation(contact.userId ?? contact.conversationId)
+    );
+    const targetConversationId = contact.conversationId;
+
+    // 3. Get public keys for all recipients in the target conversation
+    let recipientIds: string[];
+
+    if (contact.isGroup) {
+      // For group — need group member IDs
+      const groupDetails: any = await firstValueFrom(
+        this.chatService.getGroupDetails(targetConversationId)
+      );
+      recipientIds = groupDetails.members.map((m: any) => m.userId);
+    } else {
+      // For DM — recipient + sender
+      recipientIds = [contact.userId!, currentUserId];
+    }
+
+    // Deduplicate
+    const uniqueIds = Array.from(new Set(recipientIds));
+    const keys      = await firstValueFrom(
+      this.chatService.getPublicKeys(uniqueIds)
+    );
+
+    if (!keys || keys.length === 0) {
+      throw new Error('Could not fetch public keys for forwarding');
+    }
+
+    const keyMap = keys.map((k: any) => ({
+      userId: k.userId,
+      jwk:    JSON.parse(k.publicKeyJwk) as JsonWebKey
+    }));
+
+    // 4. Re-encrypt the plaintext for the new recipients
+    const { ciphertext, iv, encryptedKeys } =
+      await this.cryptoService.encryptMessage(plaintext, keyMap);
+
+    const encryptedBody = `${iv}:${ciphertext}`;
+
+    // 5. Send as a fresh message to the target conversation
+    if (contact.isGroup) {
+      await this.chatService.sendGroupMessage(
+        targetConversationId,
+        encryptedBody,
+        contentType,
+        mediaUrl,
+        encryptedKeys
+      );
+    } else {
+      await this.chatService.sendDirectMessage(
+        contact.userId!,
+        encryptedBody,
+        contentType,
+        mediaUrl,
+        encryptedKeys
+      );
+    }
+
+    this.closeForwardModal();
+    this.openChat(contact);
+
+    setTimeout(() => {
+      this.shouldScrollToBottom = true;
+      this.cdr.detectChanges();
+    }, 200);
+
+  } catch (err) {
+    console.error('❌ Forward failed:', err);
   }
+}
 
   deleteGroup(): void {
     if (this.deleteConfirmationText !== 'DELETE' || !this.conversationId) return;
@@ -1364,7 +1460,7 @@ private async sendEncryptedGroupMessage(
     this.showSearchModal = false;
   }
 
-  async onMessageSelectedFromSearch(result: SearchResultDto): Promise<void> {
+  async onMessageSelectedFromSearch(result: ClientSearchResult): Promise<void> {
     console.log('Search result selected:', result);
 
     let targetContact = this.findContactByConversationId(result.conversationId);

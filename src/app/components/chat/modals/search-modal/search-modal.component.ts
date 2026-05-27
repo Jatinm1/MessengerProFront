@@ -1,30 +1,21 @@
-// search-modal.component.ts
+// search-modal.component.ts — replace the class body only, keep your template and styles
+
 import {
-  Component,
-  EventEmitter,
-  Output,
-  OnDestroy,
-  Input,
+  Component, EventEmitter, Output, OnDestroy,
+  Input, ViewChild, ElementRef, AfterViewInit
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil, debounceTime, distinctUntilChanged } from 'rxjs';
-import { ChatService } from '../../../../services/chat.service';
-import {
-  SearchFilters,
-  SearchResultDto,
-  Contact,
-  User,
-} from '../../../../models/chat.models';
+import { Contact, User, SearchFilters } from '../../../../models/chat.models';
 import { AuthService } from '../../../../services/auth.service';
-import { ViewChild, ElementRef, AfterViewInit } from '@angular/core';
+import { SearchService, ClientSearchResult } from '../../../../services/search.service';
 
 @Component({
   selector: 'app-search-modal',
   standalone: true,
   imports: [CommonModule, FormsModule],
-  template: `
-    <div class="modal-overlay" (click)="close()">
+  template: `<div class="modal-overlay" (click)="close()">
       <div
         class="modal-content search-modal"
         (click)="$event.stopPropagation()"
@@ -217,58 +208,55 @@ import { ViewChild, ElementRef, AfterViewInit } from '@angular/core';
           </div>
         </div>
       </div>
-    </div>
-  `,
-  styleUrls: ['./search-modal.component.css'],
+    </div>`,
+  styleUrls: ['./search-modal.component.css']
 })
 export class SearchModalComponent implements OnDestroy, AfterViewInit {
-  @Input() contacts: Contact[] = [];
-  @Output() closeModal = new EventEmitter<void>();
-  @Output() messageSelected = new EventEmitter<SearchResultDto>();
+  @Input()  contacts: Contact[] = [];
+  @Output() closeModal      = new EventEmitter<void>();
+  @Output() messageSelected = new EventEmitter<ClientSearchResult>();
+
   @ViewChild('searchInput') searchInput!: ElementRef<HTMLInputElement>;
 
-  private destroy$ = new Subject<void>();
+  private destroy$      = new Subject<void>();
   private searchSubject$ = new Subject<string>();
 
-  searchQuery = '';
-  searchResults: SearchResultDto[] = [];
-  totalResults = 0;
-  currentPage = 1;
-  pageSize = 20;
-  hasMore = false;
-  isSearching = false;
-  isLoadingMore = false;
-  showFilters = false;
+  // All decrypted results cached in memory for this search session
+  private allResults: ClientSearchResult[] = [];
+
+  searchQuery    = '';
+  searchResults: ClientSearchResult[] = [];
+  totalResults   = 0;
+  currentPage    = 1;
+  pageSize       = 20;
+  hasMore        = false;
+  isSearching    = false;
+  isLoadingMore  = false;
+  showFilters    = false;
   currentUser: User | null = null;
 
   filters: SearchFilters = {
-    query: '',
-    senderId: undefined,
+    query:          '',
+    senderId:       undefined,
     conversationId: undefined,
-    startDate: undefined,
-    endDate: undefined,
+    startDate:      undefined,
+    endDate:        undefined
   };
 
   constructor(
-    private chatService: ChatService,
-    private authService: AuthService
+    private authService:   AuthService,
+    private searchService: SearchService
   ) {
     this.currentUser = this.authService.getCurrentUser();
-    // Debounce search input
+
     this.searchSubject$
       .pipe(debounceTime(400), distinctUntilChanged(), takeUntil(this.destroy$))
-      .subscribe((query) => {
-        this.performSearch(query);
-      });
+      .subscribe(query => this.performSearch(query));
   }
 
   ngAfterViewInit(): void {
-  // Delay ensures DOM is fully painted
-  setTimeout(() => {
-    this.searchInput?.nativeElement.focus();
-  }, 0);
-}
-
+    setTimeout(() => this.searchInput?.nativeElement.focus(), 0);
+  }
 
   ngOnDestroy(): void {
     this.destroy$.next();
@@ -277,74 +265,75 @@ export class SearchModalComponent implements OnDestroy, AfterViewInit {
 
   onSearchChange(query: string): void {
     this.filters.query = query;
-    this.currentPage = 1;
+    this.currentPage   = 1;
     this.searchSubject$.next(query);
   }
 
   applyFilters(): void {
-    if (this.searchQuery.length > 0) {
+    if (this.searchQuery.trim()) {
       this.currentPage = 1;
       this.performSearch(this.searchQuery);
     }
   }
 
   clearFilters(): void {
-    this.filters.senderId = undefined;
+    this.filters.senderId       = undefined;
     this.filters.conversationId = undefined;
-    this.filters.startDate = undefined;
-    this.filters.endDate = undefined;
+    this.filters.startDate      = undefined;
+    this.filters.endDate        = undefined;
     this.applyFilters();
   }
 
-  performSearch(query: string): void {
-    if (query.length === 0) {
+  async performSearch(query: string): Promise<void> {
+    if (!query.trim()) {
       this.searchResults = [];
-      this.totalResults = 0;
-      this.hasMore = false;
+      this.allResults    = [];
+      this.totalResults  = 0;
+      this.hasMore       = false;
       return;
     }
 
     this.isSearching = true;
+    this.currentPage = 1;
+    this.allResults  = [];
 
-    this.chatService
-      .searchMessages(this.filters, this.currentPage, this.pageSize)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: (response) => {
-          this.searchResults = response.results;
-          this.totalResults = response.totalCount;
-          this.hasMore = this.searchResults.length < this.totalResults;
-          this.isSearching = false;
-        },
-        error: (err) => {
-          console.error('Search failed:', err);
-          this.isSearching = false;
-        },
-      });
+    try {
+      const { results, totalCount } = await this.searchService.search(
+        query,
+        this.contacts,
+        {
+          senderId:       this.filters.senderId,
+          conversationId: this.filters.conversationId,
+          startDate:      this.filters.startDate,
+          endDate:        this.filters.endDate
+        }
+      );
+
+      // Cache all results — pagination is done in memory, no further API calls
+      this.allResults    = results;
+      this.totalResults  = totalCount;
+      this.searchResults = results.slice(0, this.pageSize);
+      this.hasMore       = totalCount > this.pageSize;
+
+    } catch (err) {
+      console.error('Search failed:', err);
+    } finally {
+      this.isSearching = false;
+    }
   }
 
+  // No API call — slices from already-decrypted in-memory results
   loadMore(): void {
-    this.isLoadingMore = true;
     this.currentPage++;
+    const offset   = (this.currentPage - 1) * this.pageSize;
+    const nextSlice = this.allResults.slice(offset, offset + this.pageSize);
 
-    this.chatService
-      .searchMessages(this.filters, this.currentPage, this.pageSize)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: (response) => {
-          this.searchResults = [...this.searchResults, ...response.results];
-          this.hasMore = this.searchResults.length < this.totalResults;
-          this.isLoadingMore = false;
-        },
-        error: (err) => {
-          console.error('Load more failed:', err);
-          this.isLoadingMore = false;
-          this.currentPage--;
-        },
-      });
+    this.searchResults = [...this.searchResults, ...nextSlice];
+    this.hasMore       = this.searchResults.length < this.totalResults;
+    this.isLoadingMore = false;
   }
 
-  selectResult(result: SearchResultDto): void {
+  selectResult(result: ClientSearchResult): void {
     this.messageSelected.emit(result);
     this.close();
   }
@@ -355,7 +344,6 @@ export class SearchModalComponent implements OnDestroy, AfterViewInit {
 
   highlightText(text: string, query: string): string {
     if (!query || !text) return text;
-
     const regex = new RegExp(`(${this.escapeRegex(query)})`, 'gi');
     return text.replace(regex, '<mark>$1</mark>');
   }
@@ -365,29 +353,17 @@ export class SearchModalComponent implements OnDestroy, AfterViewInit {
   }
 
   formatDate(dateString: string): string {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
+    const date   = new Date(dateString);
+    const now    = new Date();
+    const diff   = now.getTime() - date.getTime();
     const oneDay = 24 * 60 * 60 * 1000;
 
     if (diff < oneDay && date.getDate() === now.getDate()) {
-      return date.toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-      });
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     } else if (diff < 7 * oneDay) {
-      return date.toLocaleDateString([], {
-        weekday: 'short',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
+      return date.toLocaleDateString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
     } else {
-      return date.toLocaleDateString([], {
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
+      return date.toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     }
   }
 }

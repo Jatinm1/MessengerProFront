@@ -25,21 +25,23 @@ export interface Contact {
 
 // Update in chat.models.ts
 
+// chat.models.ts — add encryptedKey to Message interface
 export interface Message {
-  messageId: number;
-  conversationId: string;
-  fromUserId: string;
-  fromUserName: string;
-  fromDisplayName?: string;
-  body: string | null;  // Can be null if deleted
-  contentType?: string;
-  mediaUrl?: string;
-  createdAtUtc: string;
-  messageStatus?: 'Sent' | 'Delivered' | 'Read';
-  isEdited?: boolean;
-  editedAtUtc?: string;
-  isDeleted?: boolean;
+  messageId:          number;
+  conversationId:     string;
+  fromUserId:         string;
+  fromUserName:       string;
+  fromDisplayName?:   string;
+  body:               string | null;
+  contentType?:       string;
+  mediaUrl?:          string;
+  createdAtUtc:       string;
+  messageStatus?:     'Sent' | 'Delivered' | 'Read';
+  isEdited?:          boolean;
+  editedAtUtc?:       string;
+  isDeleted?:         boolean;
   deletedForEveryone?: boolean;
+  encryptedKey?:      string;  // ← add this
 }
 
 export interface MessageWithDate extends Message {
