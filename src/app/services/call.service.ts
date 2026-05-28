@@ -96,11 +96,16 @@ export class CallService implements OnDestroy {
     const token = this.authService.getToken();
     if (!token) return;
 
+    // Strip /api prefix — SignalR hubs live at root, not under /api
+    const hubUrl = `${environment.apiUrl.replace('/api', '')}/hubs/call`;
+
     this.hubConnection = new signalR.HubConnectionBuilder()
-      .withUrl(`${environment.apiUrl}/hubs/call`, {
+      .withUrl(hubUrl, {
         accessTokenFactory: () => token,
-        transport: signalR.HttpTransportType.WebSockets,
-        skipNegotiation: true,
+        // Do NOT skip negotiation — negotiate step passes the JWT token
+        // and allows transport fallback (SSE -> WebSockets)
+        skipNegotiation: false,
+        transport: signalR.HttpTransportType.WebSockets | signalR.HttpTransportType.ServerSentEvents,
       })
       .withAutomaticReconnect([1000, 2000, 5000, 10000])
       .configureLogging(signalR.LogLevel.Warning)
