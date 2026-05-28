@@ -336,3 +336,11 @@
 .nav-menu::-webkit-scrollbar-thumb:hover {
   background: #5d5d5d;
 }
+
+/* Calls nav icon — inline SVG needs explicit size */
+.nav-icon-svg {
+  width: 1.6rem;
+  height: 1.6rem;
+  color: currentColor;
+  fill: currentColor;
+}

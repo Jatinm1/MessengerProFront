@@ -7,6 +7,7 @@ import { Injectable, OnDestroy } from '@angular/core';
 import { BehaviorSubject, Subject } from 'rxjs';
 import * as signalR from '@microsoft/signalr';
 import { AuthService } from './auth.service';
+import { CallHistoryService } from './call-history.service';
 import { environment } from '../../env/env';
 
 export type CallStatus =
@@ -79,7 +80,7 @@ export class CallService implements OnDestroy {
     // { urls: 'turn:your-turn-server.com:3478', username: 'user', credential: 'pass' }
   ];
 
-  constructor(private authService: AuthService) {}
+  constructor(private authService: AuthService, private callHistoryService: CallHistoryService) {}
 
   // ========================================
   // SIGNALR CONNECTION
@@ -330,6 +331,8 @@ export class CallService implements OnDestroy {
     this.hubConnection.on('callEnded', (data: { callId: string; reason: string; durationSeconds: number }) => {
       this.callEnded$.next(data);
       this.cleanup();
+      // Refresh call history so the Calls tab is up-to-date
+      this.callHistoryService.refresh();
     });
 
     // ── Error ───────────────────────────────────────────────────────────────
