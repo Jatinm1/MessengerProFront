@@ -1175,30 +1175,47 @@ private async sendEncryptedGroupMessage(
       });
   }
 
-  performLeaveGroup(): void {
-    if (
-      !confirm(
-        `Are you sure you want to leave the group "${this.currentGroupDetails?.groupName}"?`
-      )
-    )
-      return;
+  // performLeaveGroup(): void {
+  //   if (
+  //     !confirm(
+  //       `Are you sure you want to leave the group "${this.currentGroupDetails?.groupName}"?`
+  //     )
+  //   )
+  //     return;
 
-    this.chatService
-      .leaveGroup(this.conversationId!)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: () => {
-          this.closeGroupDetailsModal();
-          this.selectedContact = null;
-          this.showChat = false;
-          this.conversationId = null;
-        },
-        error: (err) => {
-          console.error('Failed to leave group:', err);
-        },
-      });
-  }
+  //   this.chatService
+  //     .leaveGroup(this.conversationId!)
+  //     .pipe(takeUntil(this.destroy$))
+  //     .subscribe({
+  //       next: () => {
+  //         this.closeGroupDetailsModal();
+  //         this.selectedContact = null;
+  //         this.showChat = false;
+  //         this.conversationId = null;
+  //       },
+  //       error: (err) => {
+  //         console.error('Failed to leave group:', err);
+  //       },
+  //     });
+  // }
+  
+performLeaveGroup(): void {
+  if (!confirm(`Are you sure you want to leave the group "${this.currentGroupDetails?.groupName}"?`))
+    return;
 
+  // ❌ Remove this REST call:
+  // this.chatService.leaveGroup(this.conversationId!)...
+
+  // ✅ Use hub instead — this fires groupLeft$ which sidebar already listens to:
+  this.chatService.leaveGroupViaHub(this.conversationId!)
+    .then(() => {
+      this.closeGroupDetailsModal();
+      this.selectedContact = null;
+      this.showChat = false;
+      this.conversationId = null;
+    })
+    .catch(err => console.error('Failed to leave group:', err));
+}
   onCancelTransferAdmin(): void {
     this.showTransferAdminModal = false;
     this.selectedNewAdminId = null;
