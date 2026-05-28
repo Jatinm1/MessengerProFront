@@ -30,6 +30,9 @@ import { SearchModalComponent } from './modals/search-modal/search-modal.compone
 import Swal from 'sweetalert2';
 import { CryptoService } from '../../services/crypto.service';
 import { ClientSearchResult } from '../../services/search.service';
+import { AudioCallComponent } from '../audio-call/audio-call.component';
+import { IncomingCallComponent } from '../audio-call/incoming-call.component';
+import { CallService } from '../../services/call.service';
 
 interface MessageWithDate extends Message {
   dateLabel?: string;
@@ -47,6 +50,8 @@ interface MessageWithDate extends Message {
     MessagesComponent,
     ModalsComponent,
     SearchModalComponent,
+    AudioCallComponent,
+    IncomingCallComponent,
   ],
   templateUrl: './chat.component.html',
   styleUrls: ['./chat.component.css'],
@@ -133,7 +138,8 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     private chatService: ChatService,
     private cryptoService: CryptoService,
     private router: Router,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    public callService: CallService
   ) {}
 
   @HostListener('document:click', ['$event'])
@@ -165,6 +171,8 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     try {
       await this.chatService.connectToHub();
       console.log('✅ SignalR Hub Connected');
+      await this.callService.connect();
+      console.log('✅ CallHub Connected');
 
       this.loadFriendsForGroup();
       this.setupSignalRListeners();
@@ -319,6 +327,7 @@ console.log('match:', data.deletedBy === this.currentUser?.userId);
   }
 
   ngOnDestroy(): void {
+    this.callService.disconnect();
     this.destroy$.next();
     this.destroy$.complete();
     this.chatService.disconnectFromHub();
@@ -1625,5 +1634,27 @@ async forwardMessageTo(contact: Contact): Promise<void> {
     this.isUploadingGroupPhoto = false;
     this.closeEditGroupModal();
     this.loadGroupDetailsIfGroup();
+  }
+
+  // ========================================
+  // AUDIO CALLING
+  // ========================================
+  startCall(contact: Contact | null): void {
+    if (!contact || contact.isGroup || !contact.userId || !contact.conversationId || !this.currentUser || !this.currentUser.userId) return;
+
+    this.callService.startCall(
+      contact.userId,
+      contact.conversationId,
+      {
+        userId: this.currentUser.userId,
+        name: this.currentUser.displayName ?? this.currentUser.userName,
+        photoUrl: this.currentUser.profilePhotoUrl,
+      },
+      {
+        userId: contact.userId,
+        name: contact.displayName,
+        photoUrl: contact.photoUrl,
+      }
+    );
   }
 }

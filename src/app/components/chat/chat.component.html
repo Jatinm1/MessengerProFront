@@ -14,7 +14,8 @@
   <div class="chat-container">
         <app-group
       [selectedContact]="selectedContact"
-      (openGroupDetails)="openGroupDetails()">
+      (openGroupDetails)="openGroupDetails()"
+      (audioCallClicked)="startCall(selectedContact)">
     </app-group>
 
    <app-messages
@@ -105,5 +106,12 @@
     (closeModal)="closeSearchModal()"
     (messageSelected)="onMessageSelectedFromSearch($event)">
   </app-search-modal>
+
+
+  <!-- ===== AUDIO CALLING OVERLAYS ===== -->
+  <!-- Full-screen active call UI -->
+  <app-audio-call></app-audio-call>
+  <!-- Top-right incoming call banner -->
+  <app-incoming-call></app-incoming-call>
 
 </div>

@@ -55,6 +55,7 @@ export class GroupComponent {
   onAudioCallClick(): void {
     if (!this.selectedContact?.isGroup) {
       this.audioCallClicked.emit();
+      console.log('Audio call clicked for contact:', this.selectedContact);
     }
   }
 

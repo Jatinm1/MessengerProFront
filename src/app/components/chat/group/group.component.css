@@ -11,6 +11,24 @@
   height: 70px;
 }
 
+.call-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease, transform 0.1s ease;
+}
+.call-btn:hover {
+  background: rgba(255,255,255,0.22);
+  transform: scale(1.1);
+}
+
 .header-left {
   display: flex;
   align-items: center;
