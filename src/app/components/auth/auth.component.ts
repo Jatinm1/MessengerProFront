@@ -22,6 +22,7 @@ export class AuthComponent {
   // Register fields
   registerUserName = '';
   registerDisplayName = '';
+  registerEmailId = '';
   registerPassword = '';
 
   errorMessage = '';
@@ -51,6 +52,7 @@ export class AuthComponent {
     this.authService.register(
       this.registerUserName,
       this.registerDisplayName,
+      this.registerEmailId,
       this.registerPassword
     ).subscribe({
       next: () => {

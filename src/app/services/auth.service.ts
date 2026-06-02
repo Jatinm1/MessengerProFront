@@ -80,10 +80,11 @@ public keyBackupRequired$ = new Subject<void>();
     );
   }
 
-  register(userName: string, displayName: string, password: string): Observable<any> {
+  register(userName: string, displayName: string, emailId: string, password: string): Observable<any> {
     return this.http.post<any>(`${this.apiBase}/auth/register`, {
       userName,
       displayName,
+      emailId,
       password
     });
     // Note: Key generation happens on first login after register,
