@@ -17,5 +17,6 @@ export interface CallHistoryEntry {
   endedAt?:          string;
   durationSeconds:   number;
   reason:            string;   // ended | declined | missed | busy | disconnected | error
+  callType:          'audio' | 'video';
 }
  

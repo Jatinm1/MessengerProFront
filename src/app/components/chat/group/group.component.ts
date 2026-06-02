@@ -62,6 +62,7 @@ export class GroupComponent {
   onVideoCallClick(): void {
     if (!this.selectedContact?.isGroup) {
       this.videoCallClicked.emit();
+      console.log('Video call clicked for contact:', this.selectedContact);
     }
   }
 }

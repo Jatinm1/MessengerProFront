@@ -33,6 +33,7 @@ import { ClientSearchResult } from '../../services/search.service';
 import { AudioCallComponent } from '../audio-call/audio-call.component';
 import { IncomingCallComponent } from '../audio-call/incoming-call.component';
 import { CallService } from '../../services/call.service';
+import { VideoCallComponent } from '../video-call/video-call.component';
 
 interface MessageWithDate extends Message {
   dateLabel?: string;
@@ -51,6 +52,7 @@ interface MessageWithDate extends Message {
     ModalsComponent,
     SearchModalComponent,
     AudioCallComponent,
+    VideoCallComponent,
     IncomingCallComponent,
   ],
   templateUrl: './chat.component.html',
@@ -1639,10 +1641,10 @@ async forwardMessageTo(contact: Contact): Promise<void> {
   // ========================================
   // AUDIO CALLING
   // ========================================
-  startCall(contact: Contact | null): void {
+  startAudioCall(contact: Contact | null): void {
     if (!contact || contact.isGroup || !contact.userId || !contact.conversationId || !this.currentUser || !this.currentUser.userId) return;
 
-    this.callService.startCall(
+    this.callService.startAudioCall(
       contact.userId,
       contact.conversationId,
       {
@@ -1650,6 +1652,26 @@ async forwardMessageTo(contact: Contact): Promise<void> {
         name: this.currentUser.displayName ?? this.currentUser.userName,
         photoUrl: this.currentUser.profilePhotoUrl,
       },
+      'audio',
+      {
+        userId: contact.userId,
+        name: contact.displayName,
+        photoUrl: contact.photoUrl,
+      }
+    );
+  }
+  startVideoCall(contact: Contact | null): void {
+    if (!contact || contact.isGroup || !contact.userId || !contact.conversationId || !this.currentUser || !this.currentUser.userId) return;
+
+    this.callService.startVideoCall(
+      contact.userId,
+      contact.conversationId,
+      {
+        userId: this.currentUser.userId,
+        name: this.currentUser.displayName ?? this.currentUser.userName,
+        photoUrl: this.currentUser.profilePhotoUrl,
+      },
+      'video',
       {
         userId: contact.userId,
         name: contact.displayName,

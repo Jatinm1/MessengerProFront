@@ -1,14 +1,14 @@
-// ========================================
+// ============================================================
 // src/app/components/audio-call/audio-call.component.ts
-// MS Teams-style calling screen
-// ========================================
+// MS Teams-style audio calling screen
+// Only renders for callType === 'audio'
+// ============================================================
 import {
   Component,
   OnInit,
   OnDestroy,
   ChangeDetectionStrategy,
   ChangeDetectorRef,
-  Input,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Subject, interval } from 'rxjs';
@@ -21,90 +21,95 @@ import { CallService, ActiveCall } from '../../services/call.service';
   imports: [CommonModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="call-overlay" *ngIf="call" [class.connected]="call.status === 'connected'">
-      <!-- Blurred background -->
-      <div class="call-bg">
-        <div
-          class="avatar-bg"
-          [class.pulse]="call.status === 'ringing' || call.status === 'initiating'"
-        >
-          <div class="avatar-ring ring-3"></div>
-          <div class="avatar-ring ring-2"></div>
-          <div class="avatar-ring ring-1"></div>
-          <div class="avatar-circle">
-            <img
-              *ngIf="call.remote.photoUrl"
-              [src]="call.remote.photoUrl"
-              class="avatar-img"
-              alt="avatar"
-            />
-            <span *ngIf="!call.remote.photoUrl" class="avatar-initials">
-              {{ getInitial(call.remote.name) }}
-            </span>
+    <!-- Only show for audio calls -->
+    <ng-container *ngIf="call && call.callType === 'audio'">
+      <div class="call-overlay" [class.connected]="call.status === 'connected'">
+
+        <!-- Blurred background -->
+        <div class="call-bg">
+          <div
+            class="avatar-bg"
+            [class.pulse]="call.status === 'ringing' || call.status === 'initiating'"
+          >
+            <div class="avatar-ring ring-3"></div>
+            <div class="avatar-ring ring-2"></div>
+            <div class="avatar-ring ring-1"></div>
+            <div class="avatar-circle">
+              <img
+                *ngIf="call.remote.photoUrl"
+                [src]="call.remote.photoUrl"
+                class="avatar-img"
+                alt="avatar"
+              />
+              <span *ngIf="!call.remote.photoUrl" class="avatar-initials">
+                {{ getInitial(call.remote.name) }}
+              </span>
+            </div>
           </div>
         </div>
-      </div>
 
-      <!-- Call info -->
-      <div class="call-info">
-        <div class="peer-name">{{ call.remote.name }}</div>
-        <div class="call-status-text">{{ getStatusText(call) }}</div>
-        <div class="call-timer" *ngIf="call.status === 'connected'">
-          {{ formatDuration(elapsedSeconds) }}
+        <!-- Call info -->
+        <div class="call-info">
+          <div class="peer-name">{{ call.remote.name }}</div>
+          <div class="call-status-text">{{ getStatusText(call) }}</div>
+          <div class="call-timer" *ngIf="call.status === 'connected'">
+            {{ formatDuration(elapsedSeconds) }}
+          </div>
+        </div>
+
+        <!-- Peer muted indicator -->
+        <div class="peer-muted-badge" *ngIf="call.isPeerMuted && call.status === 'connected'">
+          <span class="muted-icon">🔇</span>
+          <span>{{ call.remote.name }} is muted</span>
+        </div>
+
+        <!-- Controls -->
+        <div
+          class="call-controls"
+          *ngIf="call.status === 'connected' || call.status === 'connecting' || call.status === 'ringing'"
+        >
+          <!-- Mute button (only when connected/connecting) -->
+          <button
+            class="ctrl-btn mute-btn"
+            [class.active]="call.isMuted"
+            (click)="toggleMute()"
+            [title]="call.isMuted ? 'Unmute' : 'Mute'"
+            *ngIf="call.status === 'connected' || call.status === 'connecting'"
+          >
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <ng-container *ngIf="!call.isMuted">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" fill="currentColor"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <line x1="12" y1="19" x2="12" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <line x1="8" y1="23" x2="16" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </ng-container>
+              <ng-container *ngIf="call.isMuted">
+                <path d="M1 1l22 22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <line x1="12" y1="19" x2="12" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <line x1="8" y1="23" x2="16" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </ng-container>
+            </svg>
+            <span>{{ call.isMuted ? 'Unmute' : 'Mute' }}</span>
+          </button>
+
+          <!-- End call button -->
+          <button class="ctrl-btn end-btn" (click)="endCall()" title="End call">
+            <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+              <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.01L6.6 10.8z"/>
+            </svg>
+            <span>{{ call.direction === 'inbound' && call.status === 'ringing' ? 'Decline' : 'End' }}</span>
+          </button>
+        </div>
+
+        <!-- Ended overlay -->
+        <div class="call-ended-overlay" *ngIf="showEndedMessage">
+          <div class="ended-icon">{{ endedIcon }}</div>
+          <div class="ended-text">{{ endedMessage }}</div>
         </div>
       </div>
-
-      <!-- Peer muted indicator -->
-      <div class="peer-muted-badge" *ngIf="call.isPeerMuted && call.status === 'connected'">
-        <span class="muted-icon">🔇</span>
-        <span>{{ call.remote.name }} is muted</span>
-      </div>
-
-      <!-- Controls -->
-      <div class="call-controls" *ngIf="call.status === 'connected' || call.status === 'connecting' || call.status === 'ringing'">
-        <!-- Mute button -->
-        <button
-          class="ctrl-btn mute-btn"
-          [class.active]="call.isMuted"
-          (click)="toggleMute()"
-          [title]="call.isMuted ? 'Unmute' : 'Mute'"
-          *ngIf="call.status === 'connected' || call.status === 'connecting'"
-        >
-          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <ng-container *ngIf="!call.isMuted">
-              <!-- Mic on -->
-              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" fill="currentColor"/>
-              <path d="M19 10v2a7 7 0 0 1-14 0v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-              <line x1="12" y1="19" x2="12" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-              <line x1="8" y1="23" x2="16" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </ng-container>
-            <ng-container *ngIf="call.isMuted">
-              <!-- Mic off with slash -->
-              <path d="M1 1l22 22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-              <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-              <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-              <line x1="12" y1="19" x2="12" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-              <line x1="8" y1="23" x2="16" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </ng-container>
-          </svg>
-          <span>{{ call.isMuted ? 'Unmute' : 'Mute' }}</span>
-        </button>
-
-        <!-- End call button -->
-        <button class="ctrl-btn end-btn" (click)="endCall()" title="End call">
-          <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-            <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.01L6.6 10.8z"/>
-          </svg>
-          <span>{{ call.direction === 'inbound' && call.status === 'ringing' ? 'Decline' : 'End' }}</span>
-        </button>
-      </div>
-
-      <!-- Status: ended/declined/error/busy/missed -->
-      <div class="call-ended-overlay" *ngIf="showEndedMessage">
-        <div class="ended-icon">{{ endedIcon }}</div>
-        <div class="ended-text">{{ endedMessage }}</div>
-      </div>
-    </div>
+    </ng-container>
   `,
   styles: [`
     :host { display: contents; }
@@ -123,7 +128,6 @@ import { CallService, ActiveCall } from '../../services/call.service';
       user-select: none;
     }
 
-    /* ── Background avatar ──────────────────────────────────────── */
     .call-bg {
       position: absolute;
       inset: 0;
@@ -143,8 +147,6 @@ import { CallService, ActiveCall } from '../../services/call.service';
       position: absolute;
       border-radius: 50%;
       border: 2px solid rgba(255,255,255,0.1);
-      animation: none;
-      transition: all 0.3s ease;
     }
 
     .ring-1 { width: 180px; height: 180px; }
@@ -175,11 +177,7 @@ import { CallService, ActiveCall } from '../../services/call.service';
       z-index: 1;
     }
 
-    .avatar-img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
+    .avatar-img { width: 100%; height: 100%; object-fit: cover; }
 
     .avatar-initials {
       font-size: 48px;
@@ -188,7 +186,6 @@ import { CallService, ActiveCall } from '../../services/call.service';
       text-transform: uppercase;
     }
 
-    /* ── Call info ─────────────────────────────────────────────── */
     .call-info {
       position: relative;
       z-index: 2;
@@ -207,7 +204,6 @@ import { CallService, ActiveCall } from '../../services/call.service';
     .call-status-text {
       font-size: 15px;
       color: rgba(255,255,255,0.7);
-      letter-spacing: 0.3px;
     }
 
     .call-timer {
@@ -219,7 +215,6 @@ import { CallService, ActiveCall } from '../../services/call.service';
       letter-spacing: 1px;
     }
 
-    /* ── Peer muted badge ──────────────────────────────────────── */
     .peer-muted-badge {
       position: absolute;
       top: 20px;
@@ -238,7 +233,6 @@ import { CallService, ActiveCall } from '../../services/call.service';
       z-index: 10;
     }
 
-    /* ── Controls ──────────────────────────────────────────────── */
     .call-controls {
       position: absolute;
       bottom: 60px;
@@ -271,33 +265,23 @@ import { CallService, ActiveCall } from '../../services/call.service';
       box-shadow: 0 8px 20px rgba(0,0,0,0.3);
     }
 
-    .ctrl-btn:active {
-      transform: translateY(0);
-    }
+    .ctrl-btn:active { transform: translateY(0); }
 
-    .ctrl-btn svg {
-      width: 26px;
-      height: 26px;
-    }
+    .ctrl-btn svg { width: 26px; height: 26px; }
 
-    /* Muted state */
     .ctrl-btn.mute-btn.active {
       background: rgba(255,255,255,0.9);
       color: #1a1a2e;
       border-color: transparent;
     }
 
-    /* End call */
     .ctrl-btn.end-btn {
       background: #e53e3e;
       border-color: transparent;
     }
 
-    .ctrl-btn.end-btn:hover {
-      background: #c53030;
-    }
+    .ctrl-btn.end-btn:hover { background: #c53030; }
 
-    /* ── Ended overlay ─────────────────────────────────────────── */
     .call-ended-overlay {
       position: absolute;
       inset: 0;
@@ -311,10 +295,7 @@ import { CallService, ActiveCall } from '../../services/call.service';
       animation: fadeIn 0.3s ease;
     }
 
-    @keyframes fadeIn {
-      from { opacity: 0; }
-      to   { opacity: 1; }
-    }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
     .ended-icon { font-size: 52px; }
 
@@ -344,58 +325,49 @@ export class AudioCallComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.callService.call$
       .pipe(takeUntil(this.destroy$))
-      .subscribe((call) => {
+      .subscribe(call => {
         const prev = this.call;
         this.call = call;
 
         if (call?.status === 'connected' && prev?.status !== 'connected') {
-          this.startTimer();
+          this._startTimer();
         }
-
         if (!call && prev) {
-          this.stopTimer();
+          this._stopTimer();
         }
-
         this.cdr.markForCheck();
       });
 
     this.callService.callEnded$
       .pipe(takeUntil(this.destroy$))
       .subscribe(({ reason, durationSeconds }) => {
-        this.showEndedOverlay(reason, durationSeconds);
+        this._showEndedOverlay(reason, durationSeconds);
       });
 
     this.callService.callError$
       .pipe(takeUntil(this.destroy$))
-      .subscribe((msg) => {
-        this.showEndedOverlay('error', 0);
+      .subscribe(() => {
+        this._showEndedOverlay('error', 0);
       });
   }
 
   ngOnDestroy(): void {
     this.destroy$.next();
     this.destroy$.complete();
-    this.stopTimer();
+    this._stopTimer();
   }
 
-  // ── Handlers ─────────────────────────────────────────────────────────────
-
-  toggleMute(): void {
-    this.callService.toggleMute();
-  }
+  toggleMute(): void { this.callService.toggleMute(); }
 
   endCall(): void {
     const call = this.call;
     if (!call) return;
-
     if (call.direction === 'inbound' && call.status === 'ringing') {
       this.callService.declineCall(call.callId);
     } else {
       this.callService.endCall();
     }
   }
-
-  // ── Helpers ───────────────────────────────────────────────────────────────
 
   getInitial(name: string): string {
     return name?.charAt(0)?.toUpperCase() ?? '?';
@@ -422,7 +394,7 @@ export class AudioCallComponent implements OnInit, OnDestroy {
     return `${m}:${s}`;
   }
 
-  private startTimer(): void {
+  private _startTimer(): void {
     this.elapsedSeconds = 0;
     this.timerSub = interval(1000)
       .pipe(takeUntil(this.destroy$))
@@ -432,14 +404,12 @@ export class AudioCallComponent implements OnInit, OnDestroy {
       });
   }
 
-  private stopTimer(): void {
-    if (this.timerSub) {
-      this.timerSub.unsubscribe();
-      this.timerSub = null;
-    }
+  private _stopTimer(): void {
+    this.timerSub?.unsubscribe();
+    this.timerSub = null;
   }
 
-  private showEndedOverlay(reason: string, duration: number): void {
+  private _showEndedOverlay(reason: string, duration: number): void {
     const messages: Record<string, { icon: string; text: string }> = {
       declined:     { icon: '❌', text: 'Call declined' },
       busy:         { icon: '⚠️', text: 'User is busy' },

@@ -1,7 +1,7 @@
-// ========================================
+// ============================================================
 // src/app/components/audio-call/incoming-call.component.ts
-// Incoming call notification banner (ringing screen)
-// ========================================
+// Incoming call notification banner — works for audio + video
+// ============================================================
 import {
   Component,
   OnInit,
@@ -21,8 +21,9 @@ import { AuthService } from '../../services/auth.service';
   imports: [CommonModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="incoming-call-banner" *ngIf="incoming" [@slideIn]>
-      <!-- Ringing animation -->
+    <div class="incoming-call-banner" *ngIf="incoming">
+
+      <!-- Ringing animation + avatar -->
       <div class="ring-wrapper">
         <div class="ring-anim"></div>
         <div class="avatar-sm">
@@ -33,15 +34,25 @@ import { AuthService } from '../../services/auth.service';
 
       <div class="caller-info">
         <div class="caller-name">{{ incoming.callerName }}</div>
-        <div class="call-type">📞 Incoming audio call</div>
+        <div class="call-type-label">
+          <span *ngIf="incoming.callType === 'audio'">📞 Incoming audio call</span>
+          <span *ngIf="incoming.callType === 'video'">📹 Incoming video call</span>
+        </div>
       </div>
 
       <div class="action-btns">
-        <button class="accept-btn" (click)="accept()" title="Accept">
-          <svg viewBox="0 0 24 24" fill="currentColor">
+        <!-- Accept -->
+        <button class="accept-btn" (click)="accept()" [title]="'Accept ' + incoming.callType + ' call'">
+          <svg *ngIf="incoming.callType === 'audio'" viewBox="0 0 24 24" fill="currentColor">
             <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.01L6.6 10.8z"/>
           </svg>
+          <svg *ngIf="incoming.callType === 'video'" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M23 7l-7 5 7 5V7z"/>
+            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+          </svg>
         </button>
+
+        <!-- Decline -->
         <button class="decline-btn" (click)="decline()" title="Decline">
           <svg viewBox="0 0 24 24" fill="currentColor">
             <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.01L6.6 10.8z" transform="rotate(135 12 12)"/>
@@ -75,7 +86,6 @@ import { AuthService } from '../../services/auth.service';
       to   { transform: translateX(0);   opacity: 1; }
     }
 
-    /* ── Avatar ring ─── */
     .ring-wrapper {
       position: relative;
       width: 48px;
@@ -110,13 +120,8 @@ import { AuthService } from '../../services/auth.service';
       color: #fff;
     }
 
-    .avatar-sm img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
+    .avatar-sm img { width: 100%; height: 100%; object-fit: cover; }
 
-    /* ── Info ─── */
     .caller-info {
       flex: 1;
       min-width: 0;
@@ -130,13 +135,12 @@ import { AuthService } from '../../services/auth.service';
       text-overflow: ellipsis;
     }
 
-    .call-type {
+    .call-type-label {
       font-size: 12px;
       color: rgba(255,255,255,0.6);
       margin-top: 2px;
     }
 
-    /* ── Buttons ─── */
     .action-btns {
       display: flex;
       gap: 10px;
@@ -155,24 +159,14 @@ import { AuthService } from '../../services/auth.service';
       transition: transform 0.15s ease, box-shadow 0.15s ease;
     }
 
-    .accept-btn {
-      background: #48c78e;
-      color: #fff;
-    }
+    .accept-btn { background: #48c78e; color: #fff; }
+    .decline-btn { background: #f14668; color: #fff; }
 
-    .decline-btn {
-      background: #f14668;
-      color: #fff;
-    }
-
-    .accept-btn:hover { transform: scale(1.1); box-shadow: 0 4px 12px rgba(72,199,142,0.5); }
+    .accept-btn:hover  { transform: scale(1.1); box-shadow: 0 4px 12px rgba(72,199,142,0.5); }
     .decline-btn:hover { transform: scale(1.1); box-shadow: 0 4px 12px rgba(241,70,104,0.5); }
 
     .accept-btn svg,
-    .decline-btn svg {
-      width: 20px;
-      height: 20px;
-    }
+    .decline-btn svg { width: 20px; height: 20px; }
   `],
 })
 export class IncomingCallComponent implements OnInit, OnDestroy {
@@ -188,7 +182,7 @@ export class IncomingCallComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.callService.incomingCall$
       .pipe(takeUntil(this.destroy$))
-      .subscribe((event) => {
+      .subscribe(event => {
         this.incoming = event;
         this.cdr.markForCheck();
 
@@ -198,7 +192,7 @@ export class IncomingCallComponent implements OnInit, OnDestroy {
             this.incoming = null;
             this.cdr.markForCheck();
           }
-        }, 30000);
+        }, 30_000);
       });
 
     // Dismiss when call ends
@@ -217,14 +211,12 @@ export class IncomingCallComponent implements OnInit, OnDestroy {
 
   accept(): void {
     if (!this.incoming) return;
-
     const user = this.authService.getCurrentUser();
     this.callService.answerCall(this.incoming, {
-      userId: user?.userId ?? '',
-      name: user?.displayName ?? user?.userName ?? 'Me',
+      userId:   user?.userId ?? '',
+      name:     user?.displayName ?? user?.userName ?? 'Me',
       photoUrl: user?.profilePhotoUrl,
     });
-
     this.incoming = null;
     this.cdr.markForCheck();
   }

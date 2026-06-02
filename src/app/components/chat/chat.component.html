@@ -15,7 +15,8 @@
         <app-group
       [selectedContact]="selectedContact"
       (openGroupDetails)="openGroupDetails()"
-      (audioCallClicked)="startCall(selectedContact)">
+      (audioCallClicked)="startAudioCall(selectedContact)"
+      (videoCallClicked)="startVideoCall(selectedContact)">
     </app-group>
 
    <app-messages
@@ -113,5 +114,6 @@
   <app-audio-call></app-audio-call>
   <!-- Top-right incoming call banner -->
   <app-incoming-call></app-incoming-call>
+  <app-video-call></app-video-call>
 
 </div>
