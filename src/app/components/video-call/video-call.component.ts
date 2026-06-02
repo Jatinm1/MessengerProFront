@@ -11,6 +11,7 @@ import {
   ElementRef,
   ChangeDetectionStrategy,
   ChangeDetectorRef,
+  HostListener,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Subject, interval } from 'rxjs';
@@ -25,7 +26,13 @@ import { CallService, ActiveCall } from '../../services/call.service';
   template: `
     <!-- Only show for video calls -->
     <ng-container *ngIf="call && call.callType === 'video'">
-      <div class="vc-root" [class.controls-hidden]="controlsHidden">
+      <div 
+        class="vc-root" 
+        [class.controls-hidden]="controlsHidden"
+        (mousemove)="handleActivity()"
+        (click)="handleActivity()"
+        (touchstart)="handleActivity()"
+      >
 
         <!-- ═══ Remote video (fills the screen) ════════════════════════════ -->
         <div class="remote-video-wrap">
@@ -52,7 +59,7 @@ import { CallService, ActiveCall } from '../../services/call.service';
           </div>
 
           <!-- Remote video off overlay -->
-          <div class="remote-video-off" *ngIf="remoteConnected && call.isPeerVideoOff">
+          <div class="remote-video-off" *ngIf="remoteConnected && call.isPeerVideoOff && !call.isPeerScreenSharing">
             <div class="avatar-circle large">
               <img *ngIf="call.remote.photoUrl" [src]="call.remote.photoUrl" alt="avatar" />
               <span *ngIf="!call.remote.photoUrl">{{ initial(call.remote.name) }}</span>
@@ -96,8 +103,7 @@ import { CallService, ActiveCall } from '../../services/call.service';
         </div>
 
         <!-- ═══ Controls ════════════════════════════════════════════════ -->
-        <div class="controls-bar" (mousemove)="resetControlsHideTimer()">
-
+        <div class="controls-bar">
           <!-- Mute -->
           <button
             class="ctrl-btn"
@@ -161,7 +167,6 @@ import { CallService, ActiveCall } from '../../services/call.service';
                 <rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" stroke-width="2"/>
                 <path d="M8 21h8M12 17v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                 <ng-container *ngIf="call.isScreenSharing">
-                  <!-- Stop share indicator -->
                   <path d="M1 1l22 22" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
                 </ng-container>
               </svg>
@@ -322,10 +327,9 @@ import { CallService, ActiveCall } from '../../services/call.service';
       width: 100%;
       height: 100%;
       object-fit: cover;
-      transform: scaleX(-1); /* Mirror for natural selfie view */
+      transform: scaleX(-1);
     }
 
-    /* Don't mirror screen share */
     .local-pip.screen-sharing .local-video {
       transform: none;
     }
@@ -363,6 +367,11 @@ import { CallService, ActiveCall } from '../../services/call.service';
       color: #fff;
       z-index: 5;
       pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+
+    .vc-root.controls-hidden .status-bar {
+      opacity: 0.3;
     }
 
     .remote-name {
@@ -417,11 +426,12 @@ import { CallService, ActiveCall } from '../../services/call.service';
       border-radius: 60px;
       backdrop-filter: blur(20px);
       box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-      transition: opacity 0.3s ease;
+      transition: opacity 0.3s ease, transform 0.3s ease;
     }
 
     .vc-root.controls-hidden .controls-bar {
       opacity: 0;
+      transform: translateX(-50%) translateY(20px);
       pointer-events: none;
     }
 
@@ -563,6 +573,8 @@ export class VideoCallComponent implements OnInit, AfterViewInit, OnDestroy {
 
         if (call?.status === 'connected' && prev?.status !== 'connected') {
           this._startTimer();
+          // Show controls initially when call connects
+          this.controlsHidden = false;
           this._scheduleHideControls();
         }
         if (!call && prev) {
@@ -613,7 +625,9 @@ export class VideoCallComponent implements OnInit, AfterViewInit, OnDestroy {
     this.destroy$.next();
     this.destroy$.complete();
     this._stopTimer();
-    clearTimeout(this.hideControlsTimer);
+    if (this.hideControlsTimer) {
+      clearTimeout(this.hideControlsTimer);
+    }
   }
 
   // ── Controls ───────────────────────────────────────────────────────────
@@ -650,8 +664,11 @@ export class VideoCallComponent implements OnInit, AfterViewInit, OnDestroy {
     return `${m}:${s}`;
   }
 
-  resetControlsHideTimer(): void {
+  // Handle user activity (mouse move, click, touch)
+  handleActivity(): void {
+    // Show controls
     this.controlsHidden = false;
+    // Reset the hide timer
     this._scheduleHideControls();
     this.cdr.markForCheck();
   }
@@ -722,11 +739,18 @@ export class VideoCallComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private _scheduleHideControls(): void {
-    clearTimeout(this.hideControlsTimer);
-    this.hideControlsTimer = setTimeout(() => {
-      this.controlsHidden = true;
-      this.cdr.markForCheck();
-    }, 4000);
+    // Clear any existing timer
+    if (this.hideControlsTimer) {
+      clearTimeout(this.hideControlsTimer);
+    }
+    
+    // Only schedule auto-hide if the call is connected
+    if (this.call?.status === 'connected') {
+      this.hideControlsTimer = setTimeout(() => {
+        this.controlsHidden = true;
+        this.cdr.markForCheck();
+      }, 4000);
+    }
   }
 
   private _showEndedOverlay(reason: string, duration: number): void {
