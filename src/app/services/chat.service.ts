@@ -10,6 +10,7 @@ import {
   SearchFilters
 } from '../models/chat.models';
 import { AuthService } from './auth.service';
+import { SignalRTokenService } from './signalr-token.service';
 import { environment } from '../../env/env';
 
 @Injectable({
@@ -79,7 +80,8 @@ export class ChatService {
 
   constructor(
     private http: HttpClient,
-    private authService: AuthService
+    private authService: AuthService,
+    private signalrtokenservice: SignalRTokenService
   ) {}
 
   // ========================================
@@ -87,7 +89,7 @@ export class ChatService {
   // ========================================
 
   private getHeaders(): HttpHeaders {
-    const token = this.authService.getToken();
+    const token = this.signalrtokenservice.getNegotiationToken();
     return new HttpHeaders({
       'Authorization': `Bearer ${token}`
     });
@@ -106,7 +108,7 @@ export class ChatService {
   // ========================================
 
   async connectToHub(): Promise<void> {
-    const token = this.authService.getToken();
+    const token = this.signalrtokenservice.getNegotiationToken();
     if (!token) {
       console.error('❌ No token found, cannot connect to SignalR');
       return;

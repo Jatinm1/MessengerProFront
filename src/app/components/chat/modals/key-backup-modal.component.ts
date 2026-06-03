@@ -5,6 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil } from 'rxjs';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { AuthService } from '../../../services/auth.service';
+import { SignalRTokenService } from '../../../services/signalr-token.service';
 import { CryptoService } from '../../../services/crypto.service';
 import { environment } from '../../../../env/env';
 
@@ -128,6 +129,7 @@ export class KeyBackupModalComponent implements OnInit, OnDestroy {
 
   constructor(
     private authService:   AuthService,
+    private signalrtokenservice: SignalRTokenService,
     private cryptoService: CryptoService,
     private http:          HttpClient
   ) {}
@@ -158,7 +160,7 @@ export class KeyBackupModalComponent implements OnInit, OnDestroy {
       const result = await this.cryptoService.exportEncryptedKeyBackup(userId, this.pin);
       if (!result) { this.error = 'Failed to export key'; return; }
 
-      const token = this.authService.getToken();
+      const token = this.signalrtokenservice.getNegotiationToken();
       await this.http.post(
         `${environment.apiUrl}/user/key-backup`,
         { encryptedKeyBackup: result.encryptedBackup, salt: result.salt },

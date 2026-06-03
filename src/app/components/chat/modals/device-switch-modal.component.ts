@@ -3,6 +3,7 @@ import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Subject, takeUntil } from 'rxjs';
 import { AuthService } from '../../../services/auth.service';
+import { SignalRTokenService } from '../../../services/signalr-token.service';
 import { HttpHeaders, HttpClient } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { environment } from '../../../../env/env';
@@ -370,6 +371,7 @@ export class DeviceSwitchModalComponent implements OnInit, OnDestroy {
 
   constructor(
     private authService:   AuthService,
+    private signalrtokenservice: SignalRTokenService,
     private cryptoService: CryptoService,
     private http:          HttpClient
   ) {}
@@ -396,7 +398,7 @@ export class DeviceSwitchModalComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.error   = '';
     try {
-      const token = this.authService.getToken();
+      const token = this.signalrtokenservice.getNegotiationToken();
       await this.http.post(
         `${environment.apiUrl}/user/device-switch/request-pin`, {},
         { headers: new HttpHeaders({ Authorization: `Bearer ${token}` }) }
@@ -417,7 +419,7 @@ export class DeviceSwitchModalComponent implements OnInit, OnDestroy {
     this.error   = '';
 
     try {
-      const token = this.authService.getToken();
+      const token = this.signalrtokenservice.getNegotiationToken();
       await this.http.post(
         `${environment.apiUrl}/user/device-switch/verify-pin`,
         { pin: this.pinValue },
@@ -442,7 +444,7 @@ export class DeviceSwitchModalComponent implements OnInit, OnDestroy {
 
 private async checkForKeyBackup(): Promise<any | null> {
   try {
-    const token = this.authService.getToken();
+    const token = this.signalrtokenservice.getNegotiationToken();
     return await this.http.get(
       `${environment.apiUrl}/user/key-backup`,
       { headers: new HttpHeaders({ Authorization: `Bearer ${token}` }) }
@@ -460,7 +462,7 @@ private async checkForKeyBackup(): Promise<any | null> {
   this.error   = '';
 
   try {
-    const token = this.authService.getToken();
+    const token = this.signalrtokenservice.getNegotiationToken();
     const backup: any = await this.http.get(
       `${environment.apiUrl}/user/key-backup`,
       { headers: new HttpHeaders({ Authorization: `Bearer ${token}` }) }

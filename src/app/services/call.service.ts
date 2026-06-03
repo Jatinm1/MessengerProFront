@@ -7,6 +7,7 @@ import { Injectable, OnDestroy } from '@angular/core';
 import { BehaviorSubject, Subject } from 'rxjs';
 import * as signalR from '@microsoft/signalr';
 import { AuthService } from './auth.service';
+import { SignalRTokenService } from './signalr-token.service';
 import { CallHistoryService } from './call-history.service';
 import { environment } from '../../env/env';
 
@@ -116,6 +117,7 @@ export class CallService implements OnDestroy {
 
   constructor(
     private authService: AuthService,
+    private signalrtokenservice: SignalRTokenService,
     private callHistoryService: CallHistoryService
   ) {}
 
@@ -131,7 +133,7 @@ export class CallService implements OnDestroy {
       return;
     }
 
-    const token = this.authService.getToken();
+    const token = this.signalrtokenservice.getNegotiationToken();
     if (!token) { warn('connect() called with no auth token'); return; }
 
     const hubUrl = `${environment.apiUrl.replace('/api', '')}/hubs/call`;

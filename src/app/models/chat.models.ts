@@ -1,84 +1,18 @@
-export interface User {
-  userId: string;
-  userName: string;
-  displayName: string;
-  profilePhotoUrl?: string;
-  bio?: string;
-  isOnline?: boolean;
-  lastSeenUtc?: string;
-}
 
-export interface Contact {
-  conversationId:           string;
-  isGroup:                  boolean;
-  userId?:                  string;
-  userName?:                string;
-  displayName:              string;
-  photoUrl?:                string;
-  isOnline?:                boolean;
-  lastSeenUtc?:             string;
-  lastMessageTime?:         string;
-  lastMessage?:             string;
-  lastMessageEncryptedKey?: string;   // ✅ NEW
-  unreadCount?:             number;
-}
 
-// Update in chat.models.ts
 
-// chat.models.ts — add encryptedKey to Message interface
-export interface Message {
-  messageId:          number;
-  conversationId:     string;
-  fromUserId:         string;
-  fromUserName:       string;
-  fromDisplayName?:   string;
-  body:               string | null;
-  contentType?:       string;
-  mediaUrl?:          string;
-  createdAtUtc:       string;
-  messageStatus?:     'Sent' | 'Delivered' | 'Read';
-  isEdited?:          boolean;
-  editedAtUtc?:       string;
-  isDeleted?:         boolean;
-  deletedForEveryone?: boolean;
-  encryptedKey?:      string;  // ← add this
-}
 
-export interface MessageWithDate extends Message {
-  dateLabel?: string;
-  showDateDivider?: boolean;
-}
 
 export interface LoginResponse {
   token: string;
   user: User;
 }
 
-export interface ConversationResponse {
-  conversationId: string;
-}
 
-export interface FriendRequest {
-  requestId: number;
-  senderId: string;
-  senderUserName: string;
-  senderDisplayName: string;
-  receiverId: string;
-  receiverUserName: string;
-  receiverDisplayName: string;
-  status: 'Pending' | 'Accepted' | 'Rejected';
-  createdAtUtc: string;
-  updatedAtUtc?: string;
-}
 
-export interface Friend {
-  friendUserId: string;
-  friendUserName: string;
-  friendDisplayName: string;
-  friendsSince: string;
-  isOnline?: boolean;
-  lastSeenUtc?: string;
-}
+
+
+
 
 export interface UserSearchResult {
   userId: string;
@@ -182,4 +116,101 @@ export interface SearchResponse {
   totalCount: number;
   page: number;
   pageSize: number;
+}
+
+// ============================================================
+// src/app/models/chat.models.ts
+// MODIFIED FILE — LoginResponse no longer contains token
+//                 (token lives in HttpOnly cookie)
+// ============================================================
+
+export interface User {
+  userId:         string;
+  userName:       string;
+  displayName:    string;
+  profilePhotoUrl?: string;
+  bio?:           string;
+  isOnline?:      boolean;
+  lastSeenUtc?:   string;
+}
+
+// VULN-005 / VULN-022: No token or passwordHash in client model
+export interface LoginResponse {
+  user:      User;
+  deviceId:  string;
+  expiresIn: number;   // seconds
+}
+
+export interface SessionInfo {
+  sessionId:    string;
+  deviceId:     string;
+  deviceName:   string;
+  ipAddress?:   string;
+  createdAtUtc:  string;
+  lastActiveUtc: string;
+  isCurrent:    boolean;
+}
+
+export interface Contact {
+  conversationId:           string;
+  isGroup:                  boolean;
+  userId?:                  string;
+  userName?:                string;
+  displayName:              string;
+  photoUrl?:                string;
+  isOnline?:                boolean;
+  lastSeenUtc?:             string;
+  lastMessageTime?:         string;
+  lastMessage?:             string;
+  lastMessageEncryptedKey?: string;
+  unreadCount?:             number;
+}
+
+export interface Message {
+  messageId:           number;
+  conversationId:      string;
+  fromUserId:          string;
+  fromUserName:        string;
+  fromDisplayName?:    string;
+  body:                string | null;
+  contentType?:        string;
+  mediaUrl?:           string;
+  createdAtUtc:        string;
+  messageStatus?:      'Sent' | 'Delivered' | 'Read';
+  isEdited?:           boolean;
+  editedAtUtc?:        string;
+  isDeleted?:          boolean;
+  deletedForEveryone?: boolean;
+  encryptedKey?:       string;
+}
+
+export interface MessageWithDate extends Message {
+  dateLabel?:      string;
+  showDateDivider?: boolean;
+}
+
+export interface ConversationResponse {
+  conversationId: string;
+}
+
+export interface FriendRequest {
+  requestId:           number;
+  senderId:            string;
+  senderUserName:      string;
+  senderDisplayName:   string;
+  receiverId:          string;
+  receiverUserName:    string;
+  receiverDisplayName: string;
+  status:              'Pending' | 'Accepted' | 'Rejected';
+  createdAtUtc:        string;
+  updatedAtUtc?:       string;
+}
+
+export interface Friend {
+  friendUserId:       string;
+  friendUserName:     string;
+  friendDisplayName:  string;
+  friendsSince:       string;
+  isOnline?:          boolean;
+  lastSeenUtc?:       string;
 }

@@ -1,0 +1,37 @@
+<!-- src/app/components/sessions/sessions.component.html -->
+<div class="sessions-panel">
+  <div class="sessions-header">
+    <h3>Active Sessions</h3>
+    <button class="btn-danger-outline" (click)="globalLogout()">
+      Log Out All Devices
+    </button>
+  </div>
+
+  <div *ngIf="loading" class="loading">Loading sessions...</div>
+
+  <ul class="sessions-list" *ngIf="!loading">
+    <li *ngFor="let s of sessions" class="session-item" [class.current]="s.isCurrent">
+      <div class="session-info">
+        <div class="device-name">
+          {{ s.deviceName }}
+          <span class="badge-current" *ngIf="s.isCurrent">Current</span>
+        </div>
+        <div class="session-meta">
+          <span *ngIf="s.ipAddress">{{ s.ipAddress }} &middot; </span>
+          Last active: {{ s.lastActiveUtc | date:'short' }}
+        </div>
+      </div>
+      <button
+        class="btn-revoke"
+        *ngIf="!s.isCurrent"
+        [disabled]="revoking.has(s.sessionId)"
+        (click)="revokeSession(s.sessionId)">
+        {{ revoking.has(s.sessionId) ? 'Revoking...' : 'Revoke' }}
+      </button>
+    </li>
+
+    <li *ngIf="sessions.length === 0" class="no-sessions">
+      No active sessions found.
+    </li>
+  </ul>
+</div>

@@ -1,347 +1,352 @@
-import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { BehaviorSubject, Observable, Subject, throwError } from 'rxjs';
-import { catchError, tap } from 'rxjs/operators';
-import { LoginResponse, User } from '../models/chat.models';
-import { environment } from '../../env/env';
-import { CryptoService } from './crypto.service';
+// ============================================================
+// src/app/services/auth.service.ts
+// MODIFIED FILE — Fixes:
+//   VULN-005: No token read/write via document.cookie from JS
+//             Tokens live in HttpOnly cookies set by server
+//   VULN-027: 10-minute idle session timeout
+//   VULN-003: Token refresh via /auth/refresh endpoint
+// ============================================================
+import { Injectable, OnDestroy, NgZone } from '@angular/core';
+import { HttpClient }                    from '@angular/common/http';
+import {
+  BehaviorSubject, Observable, Subject,
+  throwError, timer, Subscription, EMPTY
+} from 'rxjs';
+import { catchError, tap, switchMap } from 'rxjs/operators';
+import { Router }                     from '@angular/router';
+import { LoginResponse, User, SessionInfo } from '../models/chat.models';
+import { environment }                from '../../env/env';
+import { CryptoService }              from './crypto.service';
 
-@Injectable({
-  providedIn: 'root'
-})
-export class AuthService {
-  private apiBase: string = environment.apiUrl;
-  private currentUserSubject = new BehaviorSubject<User | null>(null);
-  private tokenSubject = new BehaviorSubject<string | null>(null);
+const IDLE_TIMEOUT_MS  = 10 * 60 * 1000;   // VULN-027: 10 minutes
+const REFRESH_AHEAD_MS =  2 * 60 * 1000;   // refresh 2 min before expiry
+
+@Injectable({ providedIn: 'root' })
+export class AuthService implements OnDestroy {
+
+  private readonly apiBase = environment.apiUrl;
+
+  // ── State ──────────────────────────────────────────────────
+  private currentUserSubject  = new BehaviorSubject<User | null>(null);
+  private deviceIdSubject     = new BehaviorSubject<string | null>(null);
+  private expiresAtSubject    = new BehaviorSubject<Date | null>(null);
   private encryptionInitialized = false;
 
-  // New subjects for device switch flow
-public deviceSwitchRequired$ = new Subject<string>();   // emits userId
-public deviceSwitchConfirmed$ = new Subject<void>();
-public deviceSwitchDeclined$  = new Subject<void>();
-public keyBackupRequired$ = new Subject<void>();
+  // ── E2EE subjects (unchanged) ──────────────────────────────
+  public deviceSwitchRequired$ = new Subject<string>();
+  public deviceSwitchConfirmed$ = new Subject<void>();
+  public deviceSwitchDeclined$  = new Subject<void>();
+  public keyBackupRequired$     = new Subject<void>();
 
+  // ── Public observables ─────────────────────────────────────
+  readonly currentUser$ = this.currentUserSubject.asObservable();
 
-  currentUser$ = this.currentUserSubject.asObservable();
-  token$ = this.tokenSubject.asObservable();
+  // ── Idle timeout ───────────────────────────────────────────
+  private idleTimer$: Subscription | null = null;
+  private readonly IDLE_EVENTS = [
+    'mousemove', 'mousedown', 'keydown',
+    'touchstart', 'scroll', 'click'
+  ];
+
+  // ── Proactive refresh ──────────────────────────────────────
+  private refreshTimer$: Subscription | null = null;
 
   constructor(
-    private http: HttpClient,
-    private cryptoService: CryptoService
+    private http:          HttpClient,
+    private cryptoService: CryptoService,
+    private router:        Router,
+    private ngZone:        NgZone
   ) {
-    this.loadFromCookies();
+    this.loadFromSessionStorage();
   }
 
-  // ========================================
-  // INITIALIZATION
-  // ========================================
+  // ── Init: restore user state (no tokens in JS) ─────────────
 
-  private loadFromCookies(): void {
-    const token = this.getCookie('auth_token');
-    const userJson = this.getCookie('current_user');
-
-    if (token) {
-      this.tokenSubject.next(token);
-    }
-
-    if (userJson) {
-      try {
-        const user = JSON.parse(decodeURIComponent(userJson));
+  private loadFromSessionStorage(): void {
+    // VULN-005: We NO LONGER read tokens from JS-accessible storage.
+    // The server sets access_token + refresh_token as HttpOnly cookies.
+    // We only persist non-sensitive user profile info in sessionStorage.
+    try {
+      const stored = sessionStorage.getItem('mp_user');
+      if (stored) {
+        const user = JSON.parse(stored) as User;
         this.currentUserSubject.next(user);
-      } catch (e) {
-        console.error('Error parsing user from cookie:', e);
       }
+      const deviceId = sessionStorage.getItem('mp_device');
+      if (deviceId) this.deviceIdSubject.next(deviceId);
+
+      const expiresAt = sessionStorage.getItem('mp_expires');
+      if (expiresAt) {
+        const exp = new Date(expiresAt);
+        this.expiresAtSubject.next(exp);
+        this.scheduleProactiveRefresh(exp);
+      }
+    } catch {
+      this.clearLocalState();
     }
   }
 
-  // ========================================
-  // AUTH METHODS
-  // ========================================
+  // ── Login ──────────────────────────────────────────────────
 
-  login(userName: string, password: string): Observable<LoginResponse> {
-    return this.http.post<LoginResponse>(`${this.apiBase}/auth/login`, {
-      userName,
-      password
-    }).pipe(
-      tap(async response => {
-        // Store auth data in cookies (expires in 8 hours to match JWT)
-        this.setCookie('auth_token', response.token, 8);
-        this.setCookie('current_user', encodeURIComponent(JSON.stringify(response.user)), 8);
-
-        // Update subjects
-        this.currentUserSubject.next(response.user);
-        this.tokenSubject.next(response.token);
-
-        // Initialize E2EE keys for this user on this device.
-        // If they already have a key pair in IndexedDB, this is a no-op.
-        // If this is a new device/first login, generates and registers keys.
+  login(userName: string, password: string, deviceName?: string): Observable<LoginResponse> {
+    return this.http.post<LoginResponse>(
+      `${this.apiBase}/auth/login`,
+      { userName, password, deviceName: deviceName ?? navigator.userAgent.substring(0, 50) },
+      { withCredentials: true }   // essential: sends/receives HttpOnly cookies
+    ).pipe(
+      tap(async (response) => {
+        this.persistSession(response);
         await this.initializeEncryption(response.user.userId);
-      })
+        this.startIdleTimer();
+        this.scheduleProactiveRefresh(
+          new Date(Date.now() + response.expiresIn * 1000)
+        );
+      }),
+      catchError(err => throwError(() => err))
     );
   }
 
+  // ── Register ───────────────────────────────────────────────
+
   register(userName: string, displayName: string, emailId: string, password: string): Observable<any> {
-    return this.http.post<any>(`${this.apiBase}/auth/register`, {
-      userName,
-      displayName,
-      emailId,
-      password
-    });
-    // Note: Key generation happens on first login after register,
-    // not during registration, since we need the userId from the login response.
+    return this.http.post<any>(
+      `${this.apiBase}/auth/register`,
+      { userName, displayName, emailId, password },
+      { withCredentials: true }
+    );
   }
 
+  // ── Logout (current device) ────────────────────────────────
+
   logout(): Observable<any> {
-    return this.http.post(`${this.apiBase}/auth/logout`, {}).pipe(
-      tap(() => this.clearAuthData()),
+    return this.http.post(
+      `${this.apiBase}/auth/logout`,
+      {},
+      { withCredentials: true }
+    ).pipe(
+      tap(() => this.handleLogout()),
       catchError(err => {
-        this.clearAuthData();
+        this.handleLogout();
         return throwError(() => err);
       })
     );
   }
 
-  forceLogout(): void {
-    this.deleteCookie('auth_token');
-    this.deleteCookie('current_user');
-    this.currentUserSubject.next(null);
-    this.tokenSubject.next(null);
-    // Note: We intentionally do NOT clear IndexedDB keys on logout.
-    // The private key should persist across sessions on the same device
-    // so the user doesn't need to re-register their public key every login.
+  // ── Global Logout (all devices) ────────────────────────────
+
+  globalLogout(): Observable<any> {
+    return this.http.post(
+      `${this.apiBase}/auth/logout/all`,
+      {},
+      { withCredentials: true }
+    ).pipe(
+      tap(() => this.handleLogout()),
+      catchError(err => {
+        this.handleLogout();
+        return throwError(() => err);
+      })
+    );
   }
 
-  // ========================================
-  // E2EE INITIALIZATION
-  // ========================================
+  // ── Refresh (called by interceptor on 401) ─────────────────
 
-  /**
-   * Called after successful login.
-   * Checks if a private key already exists in IndexedDB for this user/device.
-   * If not, generates a new RSA key pair, stores the private key locally,
-   * and registers the public key with the server.
-   */
-  // private async initializeEncryption(userId: string): Promise<void> {
-  //   try {
-  //     const existingPrivateKey = await this.cryptoService.getPrivateKey(userId);
-
-  //     if (!existingPrivateKey) {
-  //       console.log('🔐 No E2EE key found for this device — generating new key pair...');
-
-  //       const { publicKeyJwk, privateKeyJwk } = await this.cryptoService.generateKeyPair();
-
-  //       // Private key stays on this device only — never sent to server
-  //       await this.cryptoService.storePrivateKey(userId, privateKeyJwk);
-
-  //       // Register public key with server so others can encrypt messages to us
-  //       await this.registerPublicKey(JSON.stringify(publicKeyJwk));
-
-  //       console.log('✅ E2EE keys generated and registered successfully');
-  //     } else {
-  //       console.log('✅ E2EE key already exists for this device');
-  //     }
-  //   } catch (err) {
-  //     // Encryption init failure should NOT block the user from logging in.
-  //     // They'll see encrypted blobs they can't decrypt, but the app stays functional.
-  //     console.error('❌ Failed to initialize E2EE keys:', err);
-  //   }
-  // }
-
-  // auth.service.ts — replace initializeEncryption entirely
-
-private async initializeEncryption(userId: string): Promise<void> {
-  // Guard: only run once per session
-  if (this.encryptionInitialized) {
-    console.log('🔐 [E2EE] Already initialized this session, skipping');
-    return;
+  refresh(): Observable<LoginResponse> {
+    return this.http.post<LoginResponse>(
+      `${this.apiBase}/auth/refresh`,
+      {},
+      { withCredentials: true }   // sends refresh_token cookie
+    ).pipe(
+      tap((response) => {
+        this.persistSession(response);
+        this.scheduleProactiveRefresh(
+          new Date(Date.now() + response.expiresIn * 1000)
+        );
+      })
+    );
   }
 
-  try {
-    console.log('🔐 [E2EE] Starting initializeEncryption for', userId);
+  // ── Sessions ───────────────────────────────────────────────
 
-    const hasKey = await this.cryptoService.hasKeyForUser(userId);
-    console.log('🔐 [E2EE] hasKey on this device:', hasKey);
-
-    if (!hasKey) {
-      const isNew = await this.isNewUser(userId);
-      console.log('🔐 [E2EE] isNewUser:', isNew);
-
-      if (isNew) {
-        await this.generateAndRegisterKeys(userId);
-        console.log('🔐 [E2EE] Keys generated and registered ✅');
-      } else {
-        console.log('🔐 [E2EE] Existing user on new device — showing prompt');
-        this.deviceSwitchRequired$.next(userId);
-      }
-    } else {
-      console.log('🔐 [E2EE] Key already exists on this device ✅');
-    }
-
-    this.encryptionInitialized = true;
-
-  } catch (err) {
-    console.error('❌ [E2EE] initializeEncryption failed:', err);
-  }
-}
-
-// Reset the guard on logout so next login re-initializes
-private clearAuthData(): void {
-  this.deleteCookie('auth_token');
-  this.deleteCookie('current_user');
-  this.currentUserSubject.next(null);
-  this.tokenSubject.next(null);
-  this.encryptionInitialized = false;
-}
-
-
-
-
-// Checks if the user already has a public key registered on the server.
-// If yes → existing user on new device. If no → brand new user.
-private async isNewUser(userId: string): Promise<boolean> {
-  try {
-    const token = this.tokenSubject.value;
-    const keys  = await this.http.post<{ userId: string; publicKeyJwk: string }[]>(
-      `${this.apiBase}/user/public-keys`,
-      { userIds: [userId] },
-      { headers: { Authorization: `Bearer ${token}` } }
-    ).toPromise();
-
-    // If server has no public key for this user → new user
-    return !keys || keys.length === 0 || !keys[0]?.publicKeyJwk;
-  } catch {
-    return true; // assume new user on error — safe default
-  }
-}
-
-private promptDeviceSwitch(userId: string): void {
-  // Emit an event that a UI component listens to and shows the modal
-  this.deviceSwitchRequired$.next(userId);
-}
-
-// Called when user confirms they want to use this device for E2EE
-async confirmDeviceSwitch(userId: string): Promise<void> {
-  console.trace('🚨 [E2EE] confirmDeviceSwitch called');
-  await this.generateAndRegisterKeys(userId);
-  this.encryptionInitialized = true;
-  this.deviceSwitchConfirmed$.next();
-}
-
-// Called when user dismisses the modal without switching
-declineDeviceSwitch(): void {
-  this.deviceSwitchDeclined$.next();
-  // User stays logged in but messages won't decrypt on this device
-}
-
-private async generateAndRegisterKeys(userId: string): Promise<void> {
-  console.trace('🚨 [E2EE] generateAndRegisterKeys called — stack trace above');
-  const { publicKeyJwk, privateKeyJwk } = await this.cryptoService.generateKeyPair();
-  await this.cryptoService.replacePrivateKey(userId, privateKeyJwk);
-  await this.registerPublicKey(JSON.stringify(publicKeyJwk));
-  console.log('🔐 [E2EE] generateAndRegisterKeys complete');
-  this.keyBackupRequired$.next();
-}
-
-  /**
-   * Registers the user's RSA public key with the server.
-   * The server stores this so other users can fetch it to encrypt messages.
-   */
-  private async registerPublicKey(publicKeyJwk: string): Promise<void> {
-    const token = this.tokenSubject.value;
-    if (!token) return;
-
-    await this.http.post(
-      `${this.apiBase}/user/public-key`,
-      { publicKeyJwk },
-      { headers: { Authorization: `Bearer ${token}` } }
-    ).toPromise();
+  getSessions(): Observable<SessionInfo[]> {
+    return this.http.get<SessionInfo[]>(
+      `${this.apiBase}/auth/sessions`,
+      { withCredentials: true }
+    );
   }
 
-  // ========================================
-  // GETTERS
-  // ========================================
-
-  getToken(): string | null {
-    return this.tokenSubject.value;
+  revokeSession(familyId: string): Observable<any> {
+    return this.http.delete(
+      `${this.apiBase}/auth/sessions/${familyId}`,
+      { withCredentials: true }
+    );
   }
 
-  getCurrentUser(): User | null {
-    return this.currentUserSubject.value;
-  }
+  // ── Getters ────────────────────────────────────────────────
 
-  getCurrentUserId(): string | null {
-    return this.currentUserSubject.value?.userId ?? null;
+  getCurrentUser(): User | null       { return this.currentUserSubject.value; }
+  getCurrentUserId(): string | null   { return this.currentUserSubject.value?.userId ?? null; }
+  getDeviceId(): string | null        { return this.deviceIdSubject.value; }
+
+  // VULN-005: No getToken() — token lives in HttpOnly cookie, not accessible to JS
+  // Angular interceptor uses withCredentials: true for all requests instead.
+
+  isAuthenticated(): boolean {
+    return !!this.currentUserSubject.value
+        && !!this.expiresAtSubject.value
+        && this.expiresAtSubject.value > new Date();
   }
 
   setCurrentUser(user: User): void {
     this.currentUserSubject.next(user);
-    this.setCookie('current_user', encodeURIComponent(JSON.stringify(user)), 8);
+    sessionStorage.setItem('mp_user', JSON.stringify(user));
   }
 
-  isAuthenticated(): boolean {
-    return !!this.getToken();
+  // ── Idle Timer (VULN-027: 10-min inactivity logout) ────────
+
+  private startIdleTimer(): void {
+    this.stopIdleTimer();
+    this.ngZone.runOutsideAngular(() => {
+      const reset = () => this.ngZone.run(() => this.resetIdleTimer());
+      this.IDLE_EVENTS.forEach(e => document.addEventListener(e, reset, { passive: true }));
+      this.resetIdleTimer();
+    });
   }
 
-  // ========================================
-  // PRIVATE HELPERS
-  // ========================================
-
-  
-
-  private setCookie(name: string, value: string, hours: number): void {
-    const date = new Date();
-    date.setTime(date.getTime() + hours * 60 * 60 * 1000);
-    document.cookie = `${name}=${value};expires=${date.toUTCString()};path=/;SameSite=Strict`;
+  private resetIdleTimer(): void {
+    this.idleTimer$?.unsubscribe();
+    this.idleTimer$ = timer(IDLE_TIMEOUT_MS).subscribe(() => {
+      console.warn('[Auth] Idle timeout — logging out');
+      this.logout().subscribe();
+    });
   }
 
-  private getCookie(name: string): string | null {
-    const nameEQ = name + '=';
-    const ca = document.cookie.split(';');
-    for (let c of ca) {
-      let trimmed = c.trimStart();
-      if (trimmed.indexOf(nameEQ) === 0)
-        return trimmed.substring(nameEQ.length);
-    }
-    return null;
+  private stopIdleTimer(): void {
+    this.idleTimer$?.unsubscribe();
+    this.idleTimer$ = null;
+    this.IDLE_EVENTS.forEach(e =>
+      document.removeEventListener(e, this.resetIdleTimer.bind(this)));
   }
 
-  private deleteCookie(name: string): void {
-    document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;`;
+  // ── Proactive Token Refresh ────────────────────────────────
+
+  private scheduleProactiveRefresh(expiresAt: Date): void {
+    this.refreshTimer$?.unsubscribe();
+    const msUntilRefresh = expiresAt.getTime() - Date.now() - REFRESH_AHEAD_MS;
+    if (msUntilRefresh <= 0) return;
+
+    this.refreshTimer$ = timer(msUntilRefresh).pipe(
+      switchMap(() => this.refresh().pipe(catchError(() => EMPTY)))
+    ).subscribe();
   }
-  async confirmDeviceSwitchAfterRestore(userId: string): Promise<void> {
-  console.log('🔐 [E2EE] confirmDeviceSwitchAfterRestore — using restored key');
 
-  // Set flag immediately to prevent initializeEncryption from firing again
-  this.encryptionInitialized = true;
+  // ── Internal helpers ───────────────────────────────────────
 
-  try {
-    // Private key is already in IndexedDB from importEncryptedKeyBackup.
-    // We only need to re-register the matching PUBLIC key on the server
-    // so future senders encrypt with the correct public key.
-    const privateJwk = await this.cryptoService.getPrivateKeyJwk(userId);
+  private persistSession(response: LoginResponse): void {
+    this.currentUserSubject.next(response.user);
+    this.deviceIdSubject.next(response.deviceId);
+    const expiresAt = new Date(Date.now() + response.expiresIn * 1000);
+    this.expiresAtSubject.next(expiresAt);
+    // Only non-sensitive data in sessionStorage
+    sessionStorage.setItem('mp_user',    JSON.stringify(response.user));
+    sessionStorage.setItem('mp_device',  response.deviceId);
+    sessionStorage.setItem('mp_expires', expiresAt.toISOString());
+  }
 
-    if (!privateJwk) {
-      // Should never happen — importEncryptedKeyBackup just stored it
-      console.error('❌ No key found after restore — falling back to fresh generation');
-      await this.generateAndRegisterKeys(userId);
-    } else {
-      // Derive public JWK from private JWK (RSA n + e are the public components)
-      const publicJwk = await this.cryptoService.derivePublicJwkFromPrivate(privateJwk);
-      await this.registerPublicKey(JSON.stringify(publicJwk));
-      console.log('✅ [E2EE] Restored key registered with server');
-      // Do NOT emit keyBackupRequired$ — backup already exists for this key
-    }
+  private handleLogout(): void {
+    this.stopIdleTimer();
+    this.refreshTimer$?.unsubscribe();
+    this.clearLocalState();
+    this.router.navigate(['/auth']);
+  }
 
-    this.deviceSwitchConfirmed$.next();
-
-  } catch (err) {
-    console.error('❌ confirmDeviceSwitchAfterRestore failed:', err);
-    // Safe fallback — fresh keys, user loses old messages but app works
+  private clearLocalState(): void {
+    this.currentUserSubject.next(null);
+    this.deviceIdSubject.next(null);
+    this.expiresAtSubject.next(null);
     this.encryptionInitialized = false;
+    sessionStorage.removeItem('mp_user');
+    sessionStorage.removeItem('mp_device');
+    sessionStorage.removeItem('mp_expires');
+  }
+
+  forceLogout(): void {
+    this.handleLogout();
+  }
+
+  // ── E2EE (unchanged logic, token reference removed) ────────
+
+  private async initializeEncryption(userId: string): Promise<void> {
+    if (this.encryptionInitialized) return;
+    try {
+      const hasKey = await this.cryptoService.hasKeyForUser(userId);
+      if (!hasKey) {
+        const isNew = await this.isNewUser(userId);
+        if (isNew)
+          await this.generateAndRegisterKeys(userId);
+        else
+          this.deviceSwitchRequired$.next(userId);
+      }
+      this.encryptionInitialized = true;
+    } catch (err) {
+      console.error('[E2EE] initializeEncryption failed:', err);
+    }
+  }
+
+  private async isNewUser(userId: string): Promise<boolean> {
+    try {
+      const keys = await this.http.post<{ userId: string; publicKeyJwk: string }[]>(
+        `${this.apiBase}/user/public-keys`,
+        { userIds: [userId] },
+        { withCredentials: true }
+      ).toPromise();
+      return !keys || keys.length === 0 || !keys[0]?.publicKeyJwk;
+    } catch { return true; }
+  }
+
+  async confirmDeviceSwitch(userId: string): Promise<void> {
     await this.generateAndRegisterKeys(userId);
     this.encryptionInitialized = true;
     this.deviceSwitchConfirmed$.next();
   }
-}
 
+  declineDeviceSwitch(): void { this.deviceSwitchDeclined$.next(); }
+
+  private async generateAndRegisterKeys(userId: string): Promise<void> {
+    const { publicKeyJwk, privateKeyJwk } = await this.cryptoService.generateKeyPair();
+    await this.cryptoService.replacePrivateKey(userId, privateKeyJwk);
+    await this.registerPublicKey(JSON.stringify(publicKeyJwk));
+    this.keyBackupRequired$.next();
+  }
+
+  private async registerPublicKey(publicKeyJwk: string): Promise<void> {
+    await this.http.post(
+      `${this.apiBase}/user/public-key`,
+      { publicKeyJwk },
+      { withCredentials: true }
+    ).toPromise();
+  }
+
+  async confirmDeviceSwitchAfterRestore(userId: string): Promise<void> {
+    this.encryptionInitialized = true;
+    try {
+      const privateJwk = await this.cryptoService.getPrivateKeyJwk(userId);
+      if (!privateJwk) {
+        await this.generateAndRegisterKeys(userId);
+      } else {
+        const publicJwk = await this.cryptoService.derivePublicJwkFromPrivate(privateJwk);
+        await this.registerPublicKey(JSON.stringify(publicJwk));
+      }
+      this.deviceSwitchConfirmed$.next();
+    } catch {
+      this.encryptionInitialized = false;
+      await this.generateAndRegisterKeys(userId);
+      this.encryptionInitialized = true;
+      this.deviceSwitchConfirmed$.next();
+    }
+  }
+
+  ngOnDestroy(): void {
+    this.stopIdleTimer();
+    this.refreshTimer$?.unsubscribe();
+  }
 }
