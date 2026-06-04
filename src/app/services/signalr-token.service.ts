@@ -30,6 +30,7 @@ export class SignalRTokenService {
         { withCredentials: true }
       )
     );
+    console.debug('Fetched SignalR negotiation token:', response.token);
     return response.token;
   }
 }

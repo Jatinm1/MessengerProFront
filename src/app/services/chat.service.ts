@@ -88,11 +88,15 @@ export class ChatService {
   // HELPER METHODS
   // ========================================
 
-  private getHeaders(): HttpHeaders {
-    const token = this.signalrtokenservice.getNegotiationToken();
-    return new HttpHeaders({
-      'Authorization': `Bearer ${token}`
-    });
+   private httpOptions() {
+    return { withCredentials: true };
+  }
+
+  private httpOptionsWithJson() {
+    return {
+      withCredentials: true,
+      headers: new HttpHeaders({ 'Content-Type': 'application/json' })
+    };
   }
 
   getConnectionState(): Observable<signalR.HubConnectionState> {
@@ -107,18 +111,22 @@ export class ChatService {
   // SIGNALR CONNECTION MANAGEMENT
   // ========================================
 
-  async connectToHub(): Promise<void> {
-    const token = this.signalrtokenservice.getNegotiationToken();
-    if (!token) {
-      console.error('❌ No token found, cannot connect to SignalR');
-      return;
-    }
-
+   async connectToHub(): Promise<void> {
     const hubUrl = `${this.apiBase.replace('/api', '')}/hubs/chat`;
+
+    // Fetch a short-lived negotiation token from the server (server reads HttpOnly cookie)
+    let negotiationToken: string;
+    try {
+      negotiationToken = await this.signalrtokenservice.getNegotiationToken();
+    } catch (err) {
+      console.error('❌ Failed to get SignalR negotiation token:', err);
+      throw err;
+    }
 
     this.hubConnection = new signalR.HubConnectionBuilder()
       .withUrl(hubUrl, {
-        accessTokenFactory: () => token,
+        // accessTokenFactory must return the resolved string, not a Promise
+        accessTokenFactory: () => negotiationToken,
         skipNegotiation: false,
         transport: signalR.HttpTransportType.WebSockets | signalR.HttpTransportType.ServerSentEvents
       })
@@ -529,29 +537,26 @@ async sendDirectMessage(
   // REST API METHODS - CHAT
   // ========================================
 
+  
   getContacts(): Observable<Contact[]> {
-    return this.http.get<Contact[]>(`${this.apiBase}/chat/contacts`, {
-      headers: this.getHeaders()
-    });
+    return this.http.get<Contact[]>(`${this.apiBase}/chat/contacts`, this.httpOptions());
   }
 
   getAllUsers(): Observable<User[]> {
-    return this.http.get<User[]>(`${this.apiBase}/chat/all-users`, {
-      headers: this.getHeaders()
-    });
+    return this.http.get<User[]>(`${this.apiBase}/chat/all-users`, this.httpOptions());
   }
 
   getHistory(conversationId: string, page: number = 1, pageSize: number = 30): Observable<Message[]> {
     return this.http.get<Message[]>(
       `${this.apiBase}/chat/history/${conversationId}?page=${page}&pageSize=${pageSize}`,
-      { headers: this.getHeaders() }
+      this.httpOptions()
     );
   }
 
   createConversation(userId: string): Observable<ConversationResponse> {
     return this.http.get<ConversationResponse>(
       `${this.apiBase}/chat/conversation/${userId}`,
-      { headers: this.getHeaders() }
+      this.httpOptions()
     );
   }
 
@@ -559,9 +564,7 @@ async sendDirectMessage(
     return this.http.post<void>(
       `${this.apiBase}/chat/mark-as-read/${conversationId}`,
       { lastReadMessageId },
-      { 
-        headers: this.getHeaders().set('Content-Type', 'application/json') 
-      }
+      this.httpOptions()
     );
   }
 
@@ -569,16 +572,14 @@ async sendDirectMessage(
     return this.http.post<void>(
       `${this.apiBase}/chat/message/${messageId}/status`,
       { status },
-      { 
-        headers: this.getHeaders().set('Content-Type', 'application/json') 
-      }
+      this.httpOptions()
     );
   }
 
   getMessageStatus(messageId: number): Observable<MessageStatusDto[]> {
     return this.http.get<MessageStatusDto[]>(
       `${this.apiBase}/chat/message/${messageId}/status`,
-      { headers: this.getHeaders() }
+      this.httpOptions()
     );
   }
 
@@ -589,7 +590,7 @@ async sendDirectMessage(
     return this.http.post<{ url: string; publicId: string; type: string; contentType: string }>(
       `${this.apiBase}/chat/upload/media`,
       formData,
-      { headers: this.getHeaders().delete('Content-Type') }
+      this.httpOptions()
     );
   }
 
@@ -600,7 +601,7 @@ async sendDirectMessage(
   searchUsers(searchTerm: string): Observable<UserSearchResult[]> {
     return this.http.get<UserSearchResult[]>(
       `${this.apiBase}/friends/search?term=${encodeURIComponent(searchTerm)}`,
-      { headers: this.getHeaders() }
+        
     );
   }
 
@@ -608,21 +609,21 @@ async sendDirectMessage(
     return this.http.post(
       `${this.apiBase}/friends/send-request`,
       { receiverId },
-      { headers: this.getHeaders() }
+      this.httpOptions()
     );
   }
 
   getSentRequests(): Observable<FriendRequest[]> {
     return this.http.get<FriendRequest[]>(
       `${this.apiBase}/friends/requests/sent`,
-      { headers: this.getHeaders() }
+      this.httpOptions()
     );
   }
 
   getReceivedRequests(): Observable<FriendRequest[]> {
     return this.http.get<FriendRequest[]>(
       `${this.apiBase}/friends/requests/received`,
-      { headers: this.getHeaders() }
+      this.httpOptions()
     );
   }
 
@@ -630,7 +631,7 @@ async sendDirectMessage(
     return this.http.post(
       `${this.apiBase}/friends/requests/${requestId}/accept`,
       {},
-      { headers: this.getHeaders() }
+      this.httpOptions()
     );
   }
 
@@ -638,21 +639,21 @@ async sendDirectMessage(
     return this.http.post(
       `${this.apiBase}/friends/requests/${requestId}/reject`,
       {},
-      { headers: this.getHeaders() }
+      this.httpOptions()
     );
   }
 
   getFriendsList(): Observable<Friend[]> {
     return this.http.get<Friend[]>(
       `${this.apiBase}/friends/list`,
-      { headers: this.getHeaders() }
+      this.httpOptions()
     );
   }
 
   checkFriendship(userId: string): Observable<{ areFriends: boolean }> {
     return this.http.get<{ areFriends: boolean }>(
       `${this.apiBase}/friends/check/${userId}`,
-      { headers: this.getHeaders() }
+      this.httpOptions()
     );
   }
 
@@ -664,14 +665,14 @@ async sendDirectMessage(
     return this.http.post(
       `${this.apiBase}/group/create`,
       request,
-      { headers: this.getHeaders() }
+      this.httpOptions()
     );
   }
 
   getGroupDetails(conversationId: string): Observable<GroupDetails> {
     return this.http.get<GroupDetails>(
       `${this.apiBase}/group/${conversationId}`,
-      { headers: this.getHeaders() }
+      this.httpOptions()
     );
   }
 
@@ -679,7 +680,7 @@ async sendDirectMessage(
     return this.http.post(
       `${this.apiBase}/group/${conversationId}/add-member`,
       { userId },
-      { headers: this.getHeaders() }
+      this.httpOptions()
     );
   }
 
@@ -687,7 +688,7 @@ async sendDirectMessage(
     return this.http.post(
       `${this.apiBase}/group/${conversationId}/remove-member`,
       { userId },
-      { headers: this.getHeaders() }
+      this.httpOptions()
     );
   }
 
@@ -695,14 +696,14 @@ async sendDirectMessage(
     return this.http.post(
       `${this.apiBase}/group/${conversationId}/leave`,
       {},
-      { headers: this.getHeaders() }
+      this.httpOptions()
     );
   }
 
   deleteGroup(conversationId: string): Observable<any> {
     return this.http.delete(
       `${this.apiBase}/group/${conversationId}`,
-      { headers: this.getHeaders() }
+      this.httpOptions()
     );
   }
 
@@ -710,14 +711,14 @@ async sendDirectMessage(
     return this.http.put<void>(
       `${this.apiBase}/group/${conversationId}`,
       { groupName, groupPhotoUrl },
-      { headers: this.getHeaders() }
+      this.httpOptions()
     );
   }
 
   isUserAdmin(conversationId: string): Observable<{ isAdmin: boolean }> {
     return this.http.get<{ isAdmin: boolean }>(
       `${this.apiBase}/group/${conversationId}/is-admin`,
-      { headers: this.getHeaders() }
+      this.httpOptions()
     );
   }
 
@@ -725,7 +726,7 @@ async sendDirectMessage(
     return this.http.post(
       `${this.apiBase}/group/${conversationId}/transfer-admin`,
       { newAdminId },
-      { headers: this.getHeaders() }
+      this.httpOptions()
     );
   }
 
@@ -736,7 +737,7 @@ async sendDirectMessage(
     return this.http.post<{ url: string; publicId: string }>(
       `${this.apiBase}/group/${conversationId}/photo`,
       formData,
-      { headers: this.getHeaders().delete('Content-Type') }
+      this.httpOptions()
     );
   }
 
@@ -772,14 +773,14 @@ async sendDirectMessage(
   getMyProfile(): Observable<UserProfile> {
     return this.http.get<UserProfile>(
       `${this.apiBase}/user/profile`,
-      { headers: this.getHeaders() }
+      this.httpOptions()
     );
   }
 
   getUserProfile(userId: string): Observable<UserProfile> {
     return this.http.get<UserProfile>(
       `${this.apiBase}/user/profile/${userId}`,
-      { headers: this.getHeaders() }
+      this.httpOptions()
     );
   }
 
@@ -787,7 +788,7 @@ async sendDirectMessage(
     return this.http.put(
       `${this.apiBase}/user/profile`,
       request,
-      { headers: this.getHeaders() }
+      this.httpOptions()
     );
   }
 
@@ -798,17 +799,17 @@ async sendDirectMessage(
     return this.http.post<{ url: string; publicId: string }>(
       `${this.apiBase}/user/profile/photo`,
       formData,
-      { headers: this.getHeaders().delete('Content-Type') }
+      this.httpOptions()
     );
   }
 
   registerPublicKey(publicKeyJwk: string): Observable<void> {
-  return this.http.post<void>(`${this.apiBase}/user/public-key`, { publicKeyJwk }, { headers: this.getHeaders() });
+  return this.http.post<void>(`${this.apiBase}/user/public-key`, { publicKeyJwk }, this.httpOptions());
 }
 
 getPublicKeys(userIds: string[]): Observable<{ userId: string; publicKeyJwk: string }[]> {
   return this.http.post<{ userId: string; publicKeyJwk: string }[]>(
-    `${this.apiBase}/user/public-keys`, { userIds }, { headers: this.getHeaders() }
+    `${this.apiBase}/user/public-keys`, { userIds }, this.httpOptions()
   );
 }
 
