@@ -4,28 +4,35 @@
 //   VULN-005: No Authorization header with token from JS.
 //             withCredentials: true sends the HttpOnly cookie.
 //   VULN-003: On 401, attempt silent refresh then retry once.
+//
+// NOTE: CSRF token attachment is handled by csrf.interceptor.ts.
+//       Both interceptors are registered in app.config.ts;
+//       csrfInterceptor must run BEFORE authInterceptor in the
+//       providers array so the CSRF header is present when
+//       the retry after refresh fires.
 // ============================================================
 import {
   HttpInterceptorFn, HttpErrorResponse,
   HttpRequest, HttpHandlerFn, HttpEvent
 } from '@angular/common/http';
-import { inject }                       from '@angular/core';
+import { inject }                        from '@angular/core';
 import {
   catchError, switchMap, throwError, Observable, BehaviorSubject, filter, take
 } from 'rxjs';
-import { Router }    from '@angular/router';
+import { Router }     from '@angular/router';
 import { AuthService } from '../services/auth.service';
 
 // Shared state so concurrent 401s don't fire multiple refresh calls
-let isRefreshing      = false;
-const refreshSubject$ = new BehaviorSubject<boolean>(false);
+let isRefreshing       = false;
+const refreshSubject$  = new BehaviorSubject<boolean>(false);
 
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const auth   = inject(AuthService);
   const router = inject(Router);
 
-  // VULN-005: All requests use withCredentials so the HttpOnly cookie is sent.
-  // We NEVER read the token from JS or attach an Authorization header manually.
+  // VULN-005: All requests use withCredentials so the HttpOnly
+  // access_token cookie is sent automatically. We NEVER read the
+  // token from JS or attach an Authorization header manually.
   const secureReq = req.clone({ withCredentials: true });
 
   return next(secureReq).pipe(
@@ -33,7 +40,7 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
 
       // Skip refresh attempts for auth endpoints to avoid infinite loops
       const isAuthEndpoint =
-        req.url.includes('/auth/login')   ||
+        req.url.includes('/auth/login')    ||
         req.url.includes('/auth/register') ||
         req.url.includes('/auth/refresh');
 
@@ -42,7 +49,12 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
       }
 
       if (error.status === 403) {
-        router.navigate(['/auth']);
+        // 403 can be CSRF rejection or genuine authorization failure.
+        // Do NOT redirect on 403 — CSRF rejection during refresh is
+        // handled by the caller. Redirect only on hard auth failures.
+        if (!req.url.includes('/auth/')) {
+          router.navigate(['/auth']);
+        }
       }
 
       return throwError(() => error);

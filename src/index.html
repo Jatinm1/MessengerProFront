@@ -6,6 +6,29 @@
   <base href="/">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" type="image/x-icon" href="favicon.ico">
+
+  <!--
+    VULN-028: Cache-Control meta tags — belt-and-suspenders.
+    Primary cache control is set by the backend headers; these
+    meta tags act as a fallback for cases where the response
+    headers are stripped (some CDN edge nodes, service workers).
+  -->
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+
+  <!--
+    VULN-011: X-UA-Compatible — forces IE/Edge into standards mode,
+    prevents MIME-sniff-based attacks on legacy browsers.
+  -->
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+
+  <!--
+    Security: Prevent search engines from indexing the app
+    and referencing the origin in search results.
+  -->
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
 </head>
 <body>
   <app-root></app-root>

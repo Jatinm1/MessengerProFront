@@ -1,16 +1,22 @@
+// ============================================================
+// src/app/components/main-layout/main-layout.component.ts
+// MODIFIED FILE — Fixes:
+//   VULN-028: logout() uses navigateByUrl with replaceUrl: true
+//             so back-button cannot return to protected layout.
+// ============================================================
 import { Component, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { CommonModule }      from '@angular/common';
 import { Router, RouterOutlet } from '@angular/router';
-import { AuthService } from '../../services/auth.service';
-import { ChatService } from '../../services/chat.service';
-import { User } from '../../models/chat.models';
+import { AuthService }       from '../../services/auth.service';
+import { ChatService }       from '../../services/chat.service';
+import { User }              from '../../models/chat.models';
 
 @Component({
-  selector: 'app-main-layout',
-  standalone: true,
-  imports: [CommonModule, RouterOutlet],
+  selector:    'app-main-layout',
+  standalone:  true,
+  imports:     [CommonModule, RouterOutlet],
   templateUrl: './main-layout.component.html',
-  styleUrls: ['./main-layout.component.css']
+  styleUrls:   ['./main-layout.component.css']
 })
 export class MainLayoutComponent implements OnInit {
   currentUser: User | null = null;
@@ -19,20 +25,18 @@ export class MainLayoutComponent implements OnInit {
   constructor(
     private authService: AuthService,
     private chatService: ChatService,
-    private router: Router
+    private router:      Router
   ) {}
 
   async ngOnInit(): Promise<void> {
-    // 🔥 Listen for live updates
-    this.authService.currentUser$
-      .subscribe(user => {
-        this.currentUser = user;
+    this.authService.currentUser$.subscribe(user => {
+      this.currentUser = user;
 
-        // If NOT logged in, redirect
-        if (!user) {
-          this.router.navigate(['/login']);
-        }
-      });
+      if (!user) {
+        // VULN-028: replaceUrl: true so back() skips this page
+        this.router.navigateByUrl('/auth', { replaceUrl: true });
+      }
+    });
 
     try {
       await this.chatService.connectToHub();
@@ -48,7 +52,6 @@ export class MainLayoutComponent implements OnInit {
   onImageError(event: Event): void {
     const imgElement = event.target as HTMLImageElement;
     imgElement.style.display = 'none';
-    // The initials will automatically show because the image is hidden
   }
 
   isActive(route: string): boolean {
@@ -72,15 +75,17 @@ export class MainLayoutComponent implements OnInit {
   }
 
   logout(): void {
-  this.authService.logout().subscribe({
-    next: () => {
-      this.chatService.disconnectFromHub();
-this.router.navigateByUrl('/auth', { replaceUrl: true });    },
-    error: () => {
-      this.chatService.disconnectFromHub();
-      this.router.navigate(['/auth']);
-      this.router.navigateByUrl('/auth', { replaceUrl: true });
-    }
-  });
-}
+    this.authService.logout().subscribe({
+      next: () => {
+        this.chatService.disconnectFromHub();
+        // VULN-028: replaceUrl replaces history entry — back() goes
+        // to wherever the user was before opening the app, not to /chat.
+        this.router.navigateByUrl('/auth', { replaceUrl: true });
+      },
+      error: () => {
+        this.chatService.disconnectFromHub();
+        this.router.navigateByUrl('/auth', { replaceUrl: true });
+      }
+    });
+  }
 }

@@ -1,10 +1,14 @@
 // ============================================================
 // src/app/services/auth.service.ts
 // MODIFIED FILE — Fixes:
-//   VULN-005: No token read/write via document.cookie from JS
-//             Tokens live in HttpOnly cookies set by server
-//   VULN-027: 10-minute idle session timeout
-//   VULN-003: Token refresh via /auth/refresh endpoint
+//   VULN-005: No token read/write via document.cookie from JS.
+//             Tokens live in HttpOnly cookies set by server.
+//   VULN-027: 10-minute idle session timeout.
+//   VULN-003: Token refresh via /auth/refresh endpoint.
+//   VULN-028: Post-logout cache busting via SecurityService:
+//             - window.history.replaceState to /auth
+//             - BFCache guard via pageshow event listener
+//             - Clear sessionStorage on logout
 // ============================================================
 import { Injectable, OnDestroy, NgZone } from '@angular/core';
 import { HttpClient }                    from '@angular/common/http';
@@ -17,6 +21,7 @@ import { Router }                     from '@angular/router';
 import { LoginResponse, User, SessionInfo } from '../models/chat.models';
 import { environment }                from '../../env/env';
 import { CryptoService }              from './crypto.service';
+import { SecurityService }            from './security.service';
 
 const IDLE_TIMEOUT_MS  = 10 * 60 * 1000;   // VULN-027: 10 minutes
 const REFRESH_AHEAD_MS =  2 * 60 * 1000;   // refresh 2 min before expiry
@@ -52,12 +57,21 @@ export class AuthService implements OnDestroy {
   private refreshTimer$: Subscription | null = null;
 
   constructor(
-    private http:          HttpClient,
-    private cryptoService: CryptoService,
-    private router:        Router,
-    private ngZone:        NgZone
+    private http:            HttpClient,
+    private cryptoService:   CryptoService,
+    private router:          Router,
+    private ngZone:          NgZone,
+    private securityService: SecurityService
   ) {
     this.loadFromSessionStorage();
+
+    // VULN-028: Install bfcache guard — if user presses back after
+    // logout and the browser restores the page from bfcache, redirect
+    // back to /auth immediately.
+    this.securityService.installBfCacheGuard(() => this.isAuthenticated());
+
+    // VULN-028: Inject no-cache meta tags into the document head
+    this.securityService.injectNoCacheMetaTags();
   }
 
   // ── Init: restore user state (no tokens in JS) ─────────────
@@ -187,7 +201,7 @@ export class AuthService implements OnDestroy {
   getCurrentUserId(): string | null   { return this.currentUserSubject.value?.userId ?? null; }
   getDeviceId(): string | null        { return this.deviceIdSubject.value; }
 
-  // VULN-005: No getToken() — token lives in HttpOnly cookie, not accessible to JS
+  // VULN-005: No getToken() — token lives in HttpOnly cookie, not accessible to JS.
   // Angular interceptor uses withCredentials: true for all requests instead.
 
   isAuthenticated(): boolean {
@@ -256,7 +270,13 @@ export class AuthService implements OnDestroy {
     this.stopIdleTimer();
     this.refreshTimer$?.unsubscribe();
     this.clearLocalState();
-    this.router.navigate(['/auth']);
+
+    // VULN-028: Replace history entry so back-button cannot return to
+    // a protected page. SecurityService also called here explicitly
+    // after clearLocalState() ensures isAuthenticated() returns false.
+    this.securityService.clearNavigationHistory();
+
+    this.router.navigateByUrl('/auth', { replaceUrl: true });
   }
 
   private clearLocalState(): void {
@@ -264,9 +284,7 @@ export class AuthService implements OnDestroy {
     this.deviceIdSubject.next(null);
     this.expiresAtSubject.next(null);
     this.encryptionInitialized = false;
-    sessionStorage.removeItem('mp_user');
-    sessionStorage.removeItem('mp_device');
-    sessionStorage.removeItem('mp_expires');
+    sessionStorage.clear();   // VULN-028: wipe all session data on logout
   }
 
   forceLogout(): void {
